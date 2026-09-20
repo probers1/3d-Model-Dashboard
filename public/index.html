@@ -61,6 +61,15 @@
         <span id="models-count" style="font-size: 0.85rem; color: var(--text-muted);">0 models</span>
       </div>
 
+      <!-- Tags Filter Bar -->
+      <div class="tags-filter-bar" id="tags-filter-container" style="display: none;">
+        <div class="tags-filter-header">
+          <span class="tags-filter-label">🏷️ Tags:</span>
+          <button class="btn btn-sm btn-clear-filter" id="btn-clear-tags" style="display: none;">Clear Tag ✕</button>
+        </div>
+        <div class="tags-chips-wrapper" id="tags-chips-list"></div>
+      </div>
+
       <div id="models-grid" class="model-grid"></div>
 
       <div id="empty-state" class="empty-state" style="display: none;">

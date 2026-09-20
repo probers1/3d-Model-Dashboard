@@ -228,6 +228,26 @@ async function runTests() {
       throw new Error('Search failed: expected 1 match for "bracket"');
     }
     console.log('✓ Search filter returned correct matching model');
+
+    // Test GET /api/tags
+    const tagsRes = await fetch(`${baseUrl}/api/tags`, {
+      headers: { 'Cookie': userCookie }
+    });
+    const tagsList = await tagsRes.json();
+    console.log('✓ Tag aggregation returned:', tagsList);
+    if (!tagsList.some(t => t.tag === 'enclosure') || !tagsList.some(t => t.tag === 'voron')) {
+      throw new Error('Tags list missing expected tags');
+    }
+
+    // Test tag-specific filter
+    const tagFilterRes = await fetch(`${baseUrl}/api/models?tag=enclosure`, {
+      headers: { 'Cookie': userCookie }
+    });
+    const taggedModels = await tagFilterRes.json();
+    if (taggedModels.length !== 1 || taggedModels[0].id !== zipModelId) {
+      throw new Error('Tag filter failed: expected 1 match for "enclosure"');
+    }
+    console.log('✓ Explicit tag filter query returned correct matching model');
   }
 
   console.log('\n[Test 8] Edit model metadata');

@@ -79,6 +79,7 @@ function showDashboard() {
     btnAdmin.style.display = 'none';
   }
 
+  loadTags();
   loadModels();
 }
 
@@ -121,9 +122,13 @@ btnLogout.addEventListener('click', async () => {
   showLogin();
 });
 
-// -----------------------------------------------------------------------------
-// Models Dashboard
-// -----------------------------------------------------------------------------
+// Tag Filter State
+let activeTagFilter = null;
+
+const tagsFilterContainer = document.getElementById('tags-filter-container');
+const tagsChipsList = document.getElementById('tags-chips-list');
+const btnClearTags = document.getElementById('btn-clear-tags');
+
 let searchDebounceTimer = null;
 searchInput.addEventListener('input', () => {
   clearTimeout(searchDebounceTimer);
@@ -132,14 +137,69 @@ searchInput.addEventListener('input', () => {
   }, 250);
 });
 
-async function loadModels(query = '') {
+btnClearTags.addEventListener('click', () => {
+  setTagFilter(null);
+});
+
+async function loadTags() {
   try {
-    const url = query ? `/api/models?q=${encodeURIComponent(query)}` : '/api/models';
+    const res = await fetch('/api/tags');
+    if (!res.ok) return;
+
+    const tags = await res.json();
+    if (tags.length === 0) {
+      tagsFilterContainer.style.display = 'none';
+      return;
+    }
+
+    tagsFilterContainer.style.display = 'flex';
+    btnClearTags.style.display = activeTagFilter ? 'inline-block' : 'none';
+
+    // Total models count for 'All' chip
+    const totalCount = tags.reduce((acc, t) => acc + t.count, 0);
+
+    const allChip = `
+      <div class="tag-chip ${!activeTagFilter ? 'active' : ''}" onclick="setTagFilter(null)">
+        <span>All</span>
+      </div>
+    `;
+
+    const tagChips = tags.map(t => `
+      <div class="tag-chip ${activeTagFilter === t.tag ? 'active' : ''}" onclick="setTagFilter('${t.tag}')">
+        <span>#${t.tag}</span>
+        <span class="tag-chip-count">${t.count}</span>
+      </div>
+    `).join('');
+
+    tagsChipsList.innerHTML = allChip + tagChips;
+  } catch (err) {
+    console.error('Failed to load tags:', err);
+  }
+}
+
+function setTagFilter(tag) {
+  if (activeTagFilter === tag) {
+    activeTagFilter = null;
+  } else {
+    activeTagFilter = tag;
+  }
+  loadTags();
+  loadModels(searchInput.value);
+}
+
+async function loadModels(query = searchInput.value) {
+  try {
+    const params = new URLSearchParams();
+    if (query && query.trim()) params.set('q', query.trim());
+    if (activeTagFilter) params.set('tag', activeTagFilter);
+
+    const url = '/api/models' + (params.toString() ? `?${params.toString()}` : '');
     const res = await fetch(url);
     if (!res.ok) return;
 
     const models = await res.json();
-    modelsCount.textContent = `${models.length} model${models.length === 1 ? '' : 's'}`;
+    const filterDesc = activeTagFilter ? ` (tagged #${activeTagFilter})` : '';
+    modelsCount.textContent = `${models.length} model${models.length === 1 ? '' : 's'}${filterDesc}`;
 
     if (models.length === 0) {
       modelsGrid.innerHTML = '';
@@ -153,7 +213,7 @@ async function loadModels(query = '') {
     // Attach click listeners to cards
     document.querySelectorAll('.model-card').forEach(card => {
       card.addEventListener('click', (e) => {
-        if (e.target.closest('button') || e.target.closest('a')) return;
+        if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.tag-pill')) return;
         const id = card.dataset.id;
         openModelDetail(id);
       });
@@ -164,8 +224,8 @@ async function loadModels(query = '') {
 }
 
 function createModelCardHTML(m) {
-  const tags = m.tags ? m.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
-  const tagsHTML = tags.map(t => `<span class="tag-pill">#${t}</span>`).join('');
+  const tags = m.tags ? m.tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
+  const tagsHTML = tags.map(t => `<span class="tag-pill ${activeTagFilter === t ? 'active' : ''}" onclick="event.stopPropagation(); setTagFilter('${t}')" title="Filter by #${t}">#${t}</span>`).join('');
   const thumbUrl = `/api/models/${m.id}/thumbnail?t=${new Date(m.updated_at).getTime()}`;
 
   return `
@@ -320,6 +380,7 @@ document.getElementById('btn-save-metadata').addEventListener('click', async () 
     activeModel.tags = tags;
     activeModel.description = description;
     document.getElementById('modal-model-title').textContent = title;
+    loadTags();
     loadModels(searchInput.value);
   } catch (err) {
     alert(err.message);
@@ -344,6 +405,7 @@ document.getElementById('btn-delete-model').addEventListener('click', async () =
     }
 
     closeModal(detailModal);
+    loadTags();
     loadModels(searchInput.value);
   } catch (err) {
     alert(err.message);
@@ -500,6 +562,7 @@ document.getElementById('upload-form').addEventListener('submit', async (e) => {
     }
 
     closeModal(uploadModal);
+    await loadTags();
     await loadModels();
     openModelDetail(data.id);
   } catch (err) {

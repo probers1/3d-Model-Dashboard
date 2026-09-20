@@ -247,28 +247,50 @@ app.delete('/api/users/:id', requireAdmin, (req, res) => {
 // Model Management Endpoints
 // -----------------------------------------------------------------------------
 
-// List models with optional search
+// List unique tags with counts
+app.get('/api/tags', requireAuth, (req, res) => {
+  const rows = db.prepare(`SELECT tags FROM models WHERE tags IS NOT NULL AND tags != ''`).all();
+  const tagCounts = {};
+  for (const row of rows) {
+    const list = row.tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+    const uniqueInModel = new Set(list);
+    for (const t of uniqueInModel) {
+      tagCounts[t] = (tagCounts[t] || 0) + 1;
+    }
+  }
+  const result = Object.entries(tagCounts)
+    .map(([tag, count]) => ({ tag, count }))
+    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  res.json(result);
+});
+
+// List models with optional search and tag filter
 app.get('/api/models', requireAuth, (req, res) => {
   const q = req.query.q ? `%${req.query.q.trim()}%` : null;
-  let models;
+  const tag = req.query.tag ? req.query.tag.trim().toLowerCase() : null;
+
+  let query = `
+    SELECT m.*, u.username as author,
+      (SELECT COUNT(*) FROM model_files mf WHERE mf.model_id = m.id) as file_count
+    FROM models m
+    LEFT JOIN users u ON m.user_id = u.id
+    WHERE 1=1
+  `;
+  const params = [];
+
   if (q) {
-    models = db.prepare(`
-      SELECT m.*, u.username as author,
-        (SELECT COUNT(*) FROM model_files mf WHERE mf.model_id = m.id) as file_count
-      FROM models m
-      LEFT JOIN users u ON m.user_id = u.id
-      WHERE m.title LIKE ? OR m.description LIKE ? OR m.tags LIKE ?
-      ORDER BY m.created_at DESC
-    `).all(q, q, q);
-  } else {
-    models = db.prepare(`
-      SELECT m.*, u.username as author,
-        (SELECT COUNT(*) FROM model_files mf WHERE mf.model_id = m.id) as file_count
-      FROM models m
-      LEFT JOIN users u ON m.user_id = u.id
-      ORDER BY m.created_at DESC
-    `).all();
+    query += ` AND (m.title LIKE ? OR m.description LIKE ? OR m.tags LIKE ?)`;
+    params.push(q, q, q);
   }
+
+  if (tag) {
+    query += ` AND (',' || LOWER(REPLACE(m.tags, ' ', '')) || ',' LIKE ?)`;
+    params.push(`%,${tag.replace(/\s+/g, '')},%`);
+  }
+
+  query += ` ORDER BY m.created_at DESC`;
+
+  const models = db.prepare(query).all(...params);
   res.json(models);
 });
 
