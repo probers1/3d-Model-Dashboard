@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Thumbnail Worker</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #18181b; overflow: hidden; }
+    canvas { display: block; width: 640px; height: 480px; }
+  </style>
+  <script src="./vendor/three.min.js"></script>
+  <script src="./vendor/STLLoader.js"></script>
+  <script src="./vendor/OBJLoader.js"></script>
+</head>
+<body>
+  <canvas id="canvas" width="640" height="480"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: true,
+      preserveDrawingBuffer: true
+    });
+    renderer.setSize(640, 480);
+    renderer.setPixelRatio(1);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(45, 640 / 480, 0.1, 2000);
+
+    // Studio Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+    scene.add(ambientLight);
+
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.85);
+    dirLight1.position.set(100, 200, 150);
+    dirLight1.castShadow = true;
+    dirLight1.shadow.mapSize.width = 1024;
+    dirLight1.shadow.mapSize.height = 1024;
+    scene.add(dirLight1);
+
+    const dirLight2 = new THREE.DirectionalLight(0x93c5fd, 0.4);
+    dirLight2.position.set(-100, -50, -100);
+    scene.add(dirLight2);
+
+    const rimLight = new THREE.DirectionalLight(0xf472b6, 0.25);
+    rimLight.position.set(0, -100, 100);
+    scene.add(rimLight);
+
+    // Filament Material (vibrant PLA orange/coral)
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xf97316,
+      roughness: 0.4,
+      metalness: 0.1,
+      side: THREE.DoubleSide
+    });
+
+    window.renderModel = async function(base64Data, ext) {
+      try {
+        // Clear previous meshes if any
+        while(scene.children.length > 4) {
+          scene.remove(scene.children[scene.children.length - 1]);
+        }
+
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const buffer = bytes.buffer;
+
+        let rootObject;
+
+        if (ext === 'stl') {
+          const loader = new THREE.STLLoader();
+          const geometry = loader.parse(buffer);
+          geometry.computeVertexNormals();
+          geometry.center();
+          rootObject = new THREE.Mesh(geometry, material);
+          rootObject.castShadow = true;
+          rootObject.receiveShadow = true;
+        } else if (ext === 'obj') {
+          const decoder = new TextDecoder('utf-8');
+          const text = decoder.decode(buffer);
+          const loader = new THREE.OBJLoader();
+          const obj = loader.parse(text);
+          obj.traverse(child => {
+            if (child.isMesh) {
+              child.material = material;
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          
+          // Center the object
+          const box = new THREE.Box3().setFromObject(obj);
+          const center = new THREE.Vector3();
+          box.getCenter(center);
+          obj.position.sub(center);
+          rootObject = obj;
+        } else {
+          throw new Error('Unsupported extension: ' + ext);
+        }
+
+        scene.add(rootObject);
+
+        // Compute overall bounding box
+        const bbox = new THREE.Box3().setFromObject(rootObject);
+        const size = new THREE.Vector3();
+        bbox.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z) || 10;
+
+        // Position model sitting on ground
+        rootObject.position.y -= bbox.min.y;
+
+        // Circular build plate just below model to prevent z-fighting
+        const bedRadius = maxDim * 1.1;
+        const bedGeom = new THREE.CylinderGeometry(bedRadius, bedRadius, maxDim * 0.015, 64);
+        const bedMat = new THREE.MeshStandardMaterial({
+          color: 0x242427,
+          roughness: 0.85,
+          metalness: 0.15
+        });
+        const bedMesh = new THREE.Mesh(bedGeom, bedMat);
+        bedMesh.position.y = - (maxDim * 0.008);
+        bedMesh.receiveShadow = true;
+        scene.add(bedMesh);
+
+        // Standard 3D isometric perspective angle:
+        const dist = maxDim * 2.1;
+        camera.position.set(dist * 0.85, dist * 0.75, dist * 0.85);
+        camera.lookAt(0, maxDim * 0.35, 0);
+
+        renderer.render(scene, camera);
+        return canvas.toDataURL('image/png');
+      } catch (err) {
+        console.error('Render error:', err);
+        return null;
+      }
+    };
+
+    window.isWorkerReady = true;
+  </script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+[Unit]
+Description=3D Model Management Dashboard (Thingiverse/MakerWorld clone)
+After=network.target
+
+[Service]
+Type=simple
+# User=nodeapp # Uncomment if running as non-root user
+WorkingDirectory=/opt/3d-models
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+
+# Environment Configuration
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=DATA_DIR=/opt/3d-models/data
+Environment=SESSION_SECRET=super-secret-key-change-me
+Environment=ADMIN_USER=admin
+Environment=ADMIN_PASSWORD=adminpassword
+
+# Puppeteer headless Chromium sandbox configuration
+Environment=PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
+
+# Standard system resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

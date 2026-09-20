@@ -1,0 +1,21 @@
+{
+  "name": "anti-3d-model-dashboard",
+  "version": "1.0.0",
+  "description": "Minimal 3D Model Management Platform for 3D Printing",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test-e2e.js"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1",
+    "puppeteer": "^24.4.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
