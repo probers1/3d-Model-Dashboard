@@ -58,16 +58,35 @@
       <div class="search-bar">
         <span>🔍</span>
         <input type="text" id="search-input" class="search-input" placeholder="Search models by title, description, or tags (e.g., voron, bracket, organizer)...">
-        <span id="models-count" style="font-size: 0.85rem; color: var(--text-muted);">0 models</span>
+        
+        <!-- Tags Multi-Select Dropdown -->
+        <div class="tags-dropdown" id="tags-dropdown-container">
+          <button type="button" class="btn btn-secondary btn-sm tags-dropdown-trigger" id="btn-tags-toggle" title="Filter by tags">
+            <span>🏷️ Tags</span>
+            <span class="tags-dropdown-badge" id="tags-dropdown-badge">All</span>
+            <span class="dropdown-arrow">▾</span>
+          </button>
+          <div class="tags-dropdown-panel" id="tags-dropdown-panel" style="display: none;">
+            <div class="tags-dropdown-search">
+              <input type="text" id="tags-filter-search" class="form-input" style="font-size: 0.8rem; padding: 0.35rem 0.55rem;" placeholder="Search tags...">
+            </div>
+            <div class="tags-dropdown-actions">
+              <button type="button" class="btn-link-action" id="btn-select-all-tags">Select All</button>
+              <span style="color: var(--border);">|</span>
+              <button type="button" class="btn-link-action" id="btn-clear-all-tags">Clear All</button>
+            </div>
+            <div class="tags-dropdown-options" id="tags-options-list"></div>
+          </div>
+        </div>
+
+        <span id="models-count" style="font-size: 0.85rem; color: var(--text-muted); white-space: nowrap;">0 models</span>
       </div>
 
-      <!-- Tags Filter Bar -->
-      <div class="tags-filter-bar" id="tags-filter-container" style="display: none;">
-        <div class="tags-filter-header">
-          <span class="tags-filter-label">🏷️ Tags:</span>
-          <button class="btn btn-sm btn-clear-filter" id="btn-clear-tags" style="display: none;">Clear Tag ✕</button>
-        </div>
-        <div class="tags-chips-wrapper" id="tags-chips-list"></div>
+      <!-- Active Tags Bar (Quick view of selected tags) -->
+      <div class="active-tags-bar" id="active-tags-bar" style="display: none;">
+        <span class="active-tags-label">Filtered by:</span>
+        <div class="active-tags-list" id="active-tags-list"></div>
+        <button class="btn btn-sm btn-clear-filter" id="btn-clear-active-tags">Clear All ✕</button>
       </div>
 
       <div id="models-grid" class="model-grid"></div>

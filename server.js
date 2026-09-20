@@ -264,10 +264,19 @@ app.get('/api/tags', requireAuth, (req, res) => {
   res.json(result);
 });
 
-// List models with optional search and tag filter
+// List models with optional search and multiple tags filter
 app.get('/api/models', requireAuth, (req, res) => {
   const q = req.query.q ? `%${req.query.q.trim()}%` : null;
-  const tag = req.query.tag ? req.query.tag.trim().toLowerCase() : null;
+
+  // Extract multiple tags from 'tags' (comma-separated) or 'tag' (string or array)
+  let filterTags = [];
+  if (req.query.tags) {
+    filterTags = req.query.tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+  } else if (req.query.tag) {
+    filterTags = (Array.isArray(req.query.tag) ? req.query.tag : [req.query.tag])
+      .map(t => t.trim().toLowerCase())
+      .filter(Boolean);
+  }
 
   let query = `
     SELECT m.*, u.username as author,
@@ -283,9 +292,12 @@ app.get('/api/models', requireAuth, (req, res) => {
     params.push(q, q, q);
   }
 
-  if (tag) {
-    query += ` AND (',' || LOWER(REPLACE(m.tags, ' ', '')) || ',' LIKE ?)`;
-    params.push(`%,${tag.replace(/\s+/g, '')},%`);
+  if (filterTags.length > 0) {
+    const tagClauses = filterTags.map(() => `(',' || LOWER(REPLACE(m.tags, ' ', '')) || ',' LIKE ?)`).join(' OR ');
+    query += ` AND (${tagClauses})`;
+    for (const t of filterTags) {
+      params.push(`%,${t.replace(/\s+/g, '')},%`);
+    }
   }
 
   query += ` ORDER BY m.created_at DESC`;

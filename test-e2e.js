@@ -248,6 +248,16 @@ async function runTests() {
       throw new Error('Tag filter failed: expected 1 match for "enclosure"');
     }
     console.log('✓ Explicit tag filter query returned correct matching model');
+
+    // Test multiple tags filter
+    const multiTagsRes = await fetch(`${baseUrl}/api/models?tags=enclosure,voron`, {
+      headers: { 'Cookie': userCookie }
+    });
+    const multiTaggedModels = await multiTagsRes.json();
+    if (multiTaggedModels.length !== 2) {
+      throw new Error('Multi-tag filter failed: expected 2 matches for "enclosure,voron", got: ' + multiTaggedModels.length);
+    }
+    console.log('✓ Multi-tag filter query returned both matching models');
   }
 
   console.log('\n[Test 8] Edit model metadata');

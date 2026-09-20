@@ -122,12 +122,161 @@ btnLogout.addEventListener('click', async () => {
   showLogin();
 });
 
-// Tag Filter State
-let activeTagFilter = null;
+// Tag Multi-Select State
+let selectedTags = new Set();
+let allAvailableTags = [];
 
-const tagsFilterContainer = document.getElementById('tags-filter-container');
-const tagsChipsList = document.getElementById('tags-chips-list');
-const btnClearTags = document.getElementById('btn-clear-tags');
+const tagsDropdownContainer = document.getElementById('tags-dropdown-container');
+const btnTagsToggle = document.getElementById('btn-tags-toggle');
+const tagsDropdownPanel = document.getElementById('tags-dropdown-panel');
+const tagsDropdownBadge = document.getElementById('tags-dropdown-badge');
+const tagsFilterSearch = document.getElementById('tags-filter-search');
+const tagsOptionsList = document.getElementById('tags-options-list');
+const btnSelectAllTags = document.getElementById('btn-select-all-tags');
+const btnClearAllTags = document.getElementById('btn-clear-all-tags');
+
+const activeTagsBar = document.getElementById('active-tags-bar');
+const activeTagsList = document.getElementById('active-tags-list');
+const btnClearActiveTags = document.getElementById('btn-clear-active-tags');
+
+// Dropdown Toggle
+btnTagsToggle.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const isOpen = tagsDropdownPanel.style.display === 'flex';
+  tagsDropdownPanel.style.display = isOpen ? 'none' : 'flex';
+  if (!isOpen && tagsFilterSearch) {
+    tagsFilterSearch.value = '';
+    renderTagsDropdownOptions();
+    tagsFilterSearch.focus();
+  }
+});
+
+// Prevent clicks inside panel from closing
+tagsDropdownPanel.addEventListener('click', (e) => {
+  e.stopPropagation();
+});
+
+// Close dropdown on outside click
+document.addEventListener('click', (e) => {
+  if (!tagsDropdownContainer.contains(e.target)) {
+    tagsDropdownPanel.style.display = 'none';
+  }
+});
+
+// Filter tags inside dropdown
+tagsFilterSearch.addEventListener('input', () => {
+  renderTagsDropdownOptions();
+});
+
+// Select All visible tags
+btnSelectAllTags.addEventListener('click', () => {
+  const query = tagsFilterSearch.value.trim().toLowerCase();
+  allAvailableTags
+    .filter(t => !query || t.tag.toLowerCase().includes(query))
+    .forEach(t => selectedTags.add(t.tag));
+  onTagsSelectionChanged();
+});
+
+// Clear All tags
+btnClearAllTags.addEventListener('click', () => {
+  selectedTags.clear();
+  onTagsSelectionChanged();
+});
+
+btnClearActiveTags.addEventListener('click', () => {
+  selectedTags.clear();
+  onTagsSelectionChanged();
+});
+
+async function loadTags() {
+  try {
+    const res = await fetch('/api/tags');
+    if (!res.ok) return;
+
+    allAvailableTags = await res.json();
+    if (allAvailableTags.length === 0) {
+      tagsDropdownContainer.style.display = 'none';
+      activeTagsBar.style.display = 'none';
+      selectedTags.clear();
+      return;
+    }
+
+    tagsDropdownContainer.style.display = 'inline-block';
+    // Prune selectedTags that might have been deleted
+    const validTags = new Set(allAvailableTags.map(t => t.tag));
+    for (const t of selectedTags) {
+      if (!validTags.has(t)) selectedTags.delete(t);
+    }
+
+    updateTagsUI();
+  } catch (err) {
+    console.error('Failed to load tags:', err);
+  }
+}
+
+function renderTagsDropdownOptions() {
+  const query = tagsFilterSearch.value.trim().toLowerCase();
+  const visible = allAvailableTags.filter(t => !query || t.tag.toLowerCase().includes(query));
+
+  if (visible.length === 0) {
+    tagsOptionsList.innerHTML = `<div style="font-size: 0.775rem; color: var(--text-muted); padding: 0.5rem; text-align: center;">No matching tags</div>`;
+    return;
+  }
+
+  tagsOptionsList.innerHTML = visible.map(t => {
+    const isChecked = selectedTags.has(t.tag);
+    return `
+      <label class="tag-option-label">
+        <div class="tag-option-info">
+          <input type="checkbox" value="${t.tag}" ${isChecked ? 'checked' : ''} onchange="toggleTagSelection('${t.tag}')">
+          <span>#${t.tag}</span>
+        </div>
+        <span class="tag-option-count">${t.count}</span>
+      </label>
+    `;
+  }).join('');
+}
+
+function toggleTagSelection(tag) {
+  if (selectedTags.has(tag)) {
+    selectedTags.delete(tag);
+  } else {
+    selectedTags.add(tag);
+  }
+  onTagsSelectionChanged();
+}
+
+function onTagsSelectionChanged() {
+  updateTagsUI();
+  loadModels(searchInput.value);
+}
+
+function updateTagsUI() {
+  // Update badge
+  if (selectedTags.size === 0) {
+    tagsDropdownBadge.textContent = 'All';
+    tagsDropdownBadge.style.backgroundColor = 'transparent';
+    tagsDropdownBadge.style.color = 'var(--text-muted)';
+    tagsDropdownBadge.style.borderColor = 'var(--border)';
+    activeTagsBar.style.display = 'none';
+  } else {
+    tagsDropdownBadge.textContent = `${selectedTags.size}`;
+    tagsDropdownBadge.style.backgroundColor = 'rgba(249, 115, 22, 0.2)';
+    tagsDropdownBadge.style.color = 'var(--primary)';
+    tagsDropdownBadge.style.borderColor = 'rgba(249, 115, 22, 0.4)';
+    activeTagsBar.style.display = 'flex';
+  }
+
+  renderTagsDropdownOptions();
+
+  // Update active tags bar
+  activeTagsList.innerHTML = Array.from(selectedTags).map(t => `
+    <span class="active-tag-pill" onclick="toggleTagSelection('${t}')" title="Click to remove">
+      <span>#${t}</span>
+      <span class="active-tag-remove">&times;</span>
+    </span>
+  `).join('');
+}
 
 let searchDebounceTimer = null;
 searchInput.addEventListener('input', () => {
@@ -137,68 +286,20 @@ searchInput.addEventListener('input', () => {
   }, 250);
 });
 
-btnClearTags.addEventListener('click', () => {
-  setTagFilter(null);
-});
-
-async function loadTags() {
-  try {
-    const res = await fetch('/api/tags');
-    if (!res.ok) return;
-
-    const tags = await res.json();
-    if (tags.length === 0) {
-      tagsFilterContainer.style.display = 'none';
-      return;
-    }
-
-    tagsFilterContainer.style.display = 'flex';
-    btnClearTags.style.display = activeTagFilter ? 'inline-block' : 'none';
-
-    // Total models count for 'All' chip
-    const totalCount = tags.reduce((acc, t) => acc + t.count, 0);
-
-    const allChip = `
-      <div class="tag-chip ${!activeTagFilter ? 'active' : ''}" onclick="setTagFilter(null)">
-        <span>All</span>
-      </div>
-    `;
-
-    const tagChips = tags.map(t => `
-      <div class="tag-chip ${activeTagFilter === t.tag ? 'active' : ''}" onclick="setTagFilter('${t.tag}')">
-        <span>#${t.tag}</span>
-        <span class="tag-chip-count">${t.count}</span>
-      </div>
-    `).join('');
-
-    tagsChipsList.innerHTML = allChip + tagChips;
-  } catch (err) {
-    console.error('Failed to load tags:', err);
-  }
-}
-
-function setTagFilter(tag) {
-  if (activeTagFilter === tag) {
-    activeTagFilter = null;
-  } else {
-    activeTagFilter = tag;
-  }
-  loadTags();
-  loadModels(searchInput.value);
-}
-
 async function loadModels(query = searchInput.value) {
   try {
     const params = new URLSearchParams();
     if (query && query.trim()) params.set('q', query.trim());
-    if (activeTagFilter) params.set('tag', activeTagFilter);
+    if (selectedTags.size > 0) {
+      params.set('tags', Array.from(selectedTags).join(','));
+    }
 
     const url = '/api/models' + (params.toString() ? `?${params.toString()}` : '');
     const res = await fetch(url);
     if (!res.ok) return;
 
     const models = await res.json();
-    const filterDesc = activeTagFilter ? ` (tagged #${activeTagFilter})` : '';
+    const filterDesc = selectedTags.size > 0 ? ` (filtered by ${selectedTags.size} tag${selectedTags.size === 1 ? '' : 's'})` : '';
     modelsCount.textContent = `${models.length} model${models.length === 1 ? '' : 's'}${filterDesc}`;
 
     if (models.length === 0) {
@@ -225,7 +326,7 @@ async function loadModels(query = searchInput.value) {
 
 function createModelCardHTML(m) {
   const tags = m.tags ? m.tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
-  const tagsHTML = tags.map(t => `<span class="tag-pill ${activeTagFilter === t ? 'active' : ''}" onclick="event.stopPropagation(); setTagFilter('${t}')" title="Filter by #${t}">#${t}</span>`).join('');
+  const tagsHTML = tags.map(t => `<span class="tag-pill ${selectedTags.has(t) ? 'active' : ''}" onclick="event.stopPropagation(); toggleTagSelection('${t}')" title="Filter by #${t}">#${t}</span>`).join('');
   const thumbUrl = `/api/models/${m.id}/thumbnail?t=${new Date(m.updated_at).getTime()}`;
 
   return `
