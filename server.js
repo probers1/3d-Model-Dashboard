@@ -11,7 +11,23 @@ const { generateThumbnail } = require('./thumbnail');
 // -----------------------------------------------------------------------------
 // Configuration & Environment
 // -----------------------------------------------------------------------------
-const PORT = process.env.PORT || 3000;
+// Auto-load .env if present (zero external dependencies)
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, 'utf8');
+  for (const line of envContent.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+      const [k, ...v] = trimmed.split('=');
+      const key = k.trim();
+      if (!process.env[key]) {
+        process.env[key] = v.join('=').trim();
+      }
+    }
+  }
+}
+
+const PORT = process.env.PORT || 3005;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
 const SESSION_SECRET = process.env.SESSION_SECRET || 'anti-3d-model-secret-key-default';
 const ADMIN_USER = process.env.ADMIN_USER || 'admin';

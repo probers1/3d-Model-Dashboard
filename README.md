@@ -55,7 +55,7 @@ cp .env.example .env
 npm start
 ```
 
-Open your browser at **`http://localhost:3000`**.
+Open your browser at **`http://localhost:3005`**.
 
 ### Default Admin Credentials
 - **Username:** `admin`
@@ -120,7 +120,7 @@ systemctl restart app.service
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PORT` | `3000` | Port the web server listens on |
+| `PORT` | `3005` | Port the web server listens on |
 | `DATA_DIR` | `./data` | Directory for SQLite database, uploaded files, and thumbnails |
 | `SESSION_SECRET` | `anti-3d-model-secret-key-default` | Secret used to sign session cookies |
 | `ADMIN_USER` | `admin` | Initial admin username auto-seeded if database is empty |
