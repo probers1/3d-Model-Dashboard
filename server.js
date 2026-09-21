@@ -369,12 +369,20 @@ app.post('/api/models', requireAuth, upload.array('files'), async (req, res) => 
 
           const entryExt = path.extname(entry.entryName).toLowerCase().slice(1);
           if (entryExt === 'stl' || entryExt === 'obj') {
-            const safeName = path.basename(entry.entryName);
-            const targetPath = path.join(filesDir, safeName);
+            let safeName = path.basename(entry.entryName);
+            let targetPath = path.join(filesDir, safeName);
+            let counter = 1;
+            while (fs.existsSync(targetPath)) {
+              const extName = path.extname(safeName);
+              const base = path.basename(safeName, extName);
+              safeName = `${base}_${counter}${extName}`;
+              targetPath = path.join(filesDir, safeName);
+              counter++;
+            }
             fs.writeFileSync(targetPath, entry.getData());
             extractedFiles.push({
               filename: safeName,
-              original_name: safeName,
+              original_name: path.basename(entry.entryName),
               size: entry.header.size,
               file_ext: entryExt,
               fullPath: targetPath
@@ -382,8 +390,16 @@ app.post('/api/models', requireAuth, upload.array('files'), async (req, res) => 
           }
         }
       } else if (ext === 'stl' || ext === 'obj') {
-        const safeName = path.basename(file.originalname);
-        const targetPath = path.join(filesDir, safeName);
+        let safeName = path.basename(file.originalname);
+        let targetPath = path.join(filesDir, safeName);
+        let counter = 1;
+        while (fs.existsSync(targetPath)) {
+          const extName = path.extname(safeName);
+          const base = path.basename(safeName, extName);
+          safeName = `${base}_${counter}${extName}`;
+          targetPath = path.join(filesDir, safeName);
+          counter++;
+        }
         fs.writeFileSync(targetPath, file.buffer);
         extractedFiles.push({
           filename: safeName,

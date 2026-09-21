@@ -133,14 +133,19 @@
           </div>
 
           <div class="form-group">
-            <label>Files (.stl, .obj, or .zip archive) *</label>
+            <label>Files or Folder (.stl, .obj, .zip) *</label>
             <div class="drop-zone" id="upload-dropzone">
-              <span class="drop-icon">📂</span>
-              <p><strong>Click to browse</strong> or drag & drop 3D files here</p>
+              <span class="drop-icon">📁</span>
+              <p><strong>Drag & drop a folder</strong> or 3D files here</p>
               <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem;">
-                Accepts multiple .stl/.obj files or a single .zip (auto-extracted)
+                Accepts whole folders with models, multiple .stl/.obj files, or a .zip archive
               </p>
+              <div style="margin-top: 0.75rem; display: flex; justify-content: center; gap: 0.6rem;">
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-browse-files">Browse Files</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-browse-folder">📁 Browse Folder</button>
+              </div>
               <input type="file" id="upload-file-input" multiple accept=".stl,.obj,.zip" style="display: none;">
+              <input type="file" id="upload-folder-input" webkitdirectory directory multiple style="display: none;">
             </div>
             <div id="selected-files-list" class="file-list"></div>
           </div>

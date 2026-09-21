@@ -557,8 +557,29 @@ btnOpenUpload.addEventListener('click', () => {
 
 const dropzone = document.getElementById('upload-dropzone');
 const fileInput = document.getElementById('upload-file-input');
+const folderInput = document.getElementById('upload-folder-input');
+const btnBrowseFiles = document.getElementById('btn-browse-files');
+const btnBrowseFolder = document.getElementById('btn-browse-folder');
 
-dropzone.addEventListener('click', () => fileInput.click());
+if (btnBrowseFiles) {
+  btnBrowseFiles.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fileInput.click();
+  });
+}
+
+if (btnBrowseFolder) {
+  btnBrowseFolder.addEventListener('click', (e) => {
+    e.stopPropagation();
+    folderInput.click();
+  });
+}
+
+dropzone.addEventListener('click', (e) => {
+  if (e.target !== btnBrowseFiles && e.target !== btnBrowseFolder) {
+    fileInput.click();
+  }
+});
 
 ['dragenter', 'dragover'].forEach(name => {
   dropzone.addEventListener(name, (e) => {
@@ -574,32 +595,119 @@ dropzone.addEventListener('click', () => fileInput.click());
   });
 });
 
-dropzone.addEventListener('drop', (e) => {
-  const files = Array.from(e.dataTransfer.files);
-  handleFilesSelected(files);
+dropzone.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+
+  const { files, folderName } = await getFilesFromDataTransfer(e.dataTransfer);
+  handleFilesSelected(files, folderName);
 });
 
 fileInput.addEventListener('change', () => {
   const files = Array.from(fileInput.files);
   handleFilesSelected(files);
+  fileInput.value = '';
 });
 
-function handleFilesSelected(files) {
+folderInput.addEventListener('change', () => {
+  const files = Array.from(folderInput.files);
+  let folderName = '';
+  if (files.length > 0 && files[0].webkitRelativePath) {
+    folderName = files[0].webkitRelativePath.split('/')[0] || '';
+  }
+  handleFilesSelected(files, folderName);
+  folderInput.value = '';
+});
+
+async function getFilesFromDataTransfer(dataTransfer) {
+  const files = [];
+  let detectedFolderName = '';
+
+  if (dataTransfer.items && dataTransfer.items.length > 0) {
+    const entries = [];
+    for (let i = 0; i < dataTransfer.items.length; i++) {
+      const item = dataTransfer.items[i];
+      if (item.kind === 'file') {
+        const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+        if (entry) {
+          entries.push(entry);
+        } else {
+          const f = item.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+    }
+
+    if (entries.length > 0) {
+      for (const entry of entries) {
+        if (entry.isDirectory && !detectedFolderName) {
+          detectedFolderName = entry.name;
+        }
+        await traverseEntry(entry, files);
+      }
+      return { files, folderName: detectedFolderName };
+    }
+  }
+
+  const standardFiles = Array.from(dataTransfer.files || []);
+  return { files: standardFiles, folderName: '' };
+}
+
+async function traverseEntry(entry, fileList) {
+  if (entry.isFile) {
+    try {
+      const file = await new Promise((resolve, reject) => {
+        entry.file(resolve, reject);
+      });
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (['stl', 'obj', 'zip'].includes(ext)) {
+        fileList.push(file);
+      }
+    } catch (err) {
+      console.warn('Error reading file entry:', err);
+    }
+  } else if (entry.isDirectory) {
+    try {
+      const reader = entry.createReader();
+      const readAllEntries = async () => {
+        const entries = await new Promise((resolve, reject) => {
+          reader.readEntries(resolve, reject);
+        });
+        if (entries.length > 0) {
+          for (const child of entries) {
+            if (child.name.startsWith('.') || child.name.includes('__MACOSX')) continue;
+            await traverseEntry(child, fileList);
+          }
+          await readAllEntries();
+        }
+      };
+      await readAllEntries();
+    } catch (err) {
+      console.warn('Error reading directory entry:', err);
+    }
+  }
+}
+
+function handleFilesSelected(files, folderName = '') {
   const valid = files.filter(f => {
     const ext = f.name.split('.').pop().toLowerCase();
     return ['stl', 'obj', 'zip'].includes(ext);
   });
 
   if (valid.length === 0) {
-    alert('Please select .stl, .obj, or .zip files.');
+    alert('No valid .stl, .obj, or .zip files found in selection.');
     return;
   }
 
-  // Auto-fill title from first file if empty
+  // Auto-fill title from folder name or first file name if empty
   const titleInput = document.getElementById('upload-title');
-  if (!titleInput.value && valid.length > 0) {
-    const rawName = valid[0].name.replace(/\.[^/.]+$/, '');
-    titleInput.value = rawName.replace(/[_-]/g, ' ');
+  if (!titleInput.value) {
+    if (folderName) {
+      titleInput.value = folderName.replace(/[_-]/g, ' ');
+    } else if (valid.length > 0) {
+      const rawName = valid[0].name.replace(/\.[^/.]+$/, '');
+      titleInput.value = rawName.replace(/[_-]/g, ' ');
+    }
   }
 
   queuedUploadFiles = [...queuedUploadFiles, ...valid];
