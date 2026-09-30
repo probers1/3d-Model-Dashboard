@@ -13,6 +13,7 @@ async function getBrowser() {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu-sandbox',
+        '--in-process-gpu',
         '--use-gl=angle',
         '--use-angle=swiftshader',
         '--enable-webgl',
@@ -72,14 +73,14 @@ async function generateThumbnail(inputFilePath, outputImagePath) {
     return false;
   } finally {
     if (page) {
-      await page.close().catch(() => {});
+      await page.close().catch(() => { });
     }
   }
 }
 
 async function closeBrowser() {
   if (browserInstance) {
-    await browserInstance.close().catch(() => {});
+    await browserInstance.close().catch(() => { });
     browserInstance = null;
   }
 }
