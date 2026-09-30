@@ -11,6 +11,7 @@ Restart=always
 RestartSec=5
 
 # Environment Configuration
+Environment=HOME=/root
 Environment=NODE_ENV=production
 Environment=PORT=3005
 Environment=DATA_DIR=/opt/3d-models/data
