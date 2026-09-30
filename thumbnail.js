@@ -14,10 +14,13 @@ async function getBrowser() {
         '--disable-dev-shm-usage',
         '--disable-gpu-sandbox',
         '--in-process-gpu',
+        '--enable-unsafe-swiftshader',
         '--use-gl=angle',
         '--use-angle=swiftshader',
         '--enable-webgl',
-        '--ignore-gpu-blocklist'
+        '--ignore-gpu-blocklist',
+        '--allow-file-access-from-files',
+        '--disable-web-security'
       ]
     });
   }
@@ -42,6 +45,8 @@ async function generateThumbnail(inputFilePath, outputImagePath) {
 
     const browser = await getBrowser();
     page = await browser.newPage();
+    page.on('console', msg => console.log('[Worker Console]:', msg.text()));
+    page.on('pageerror', err => console.error('[Worker Error]:', err.message));
     await page.setViewport({ width: 640, height: 480, deviceScaleFactor: 1 });
 
     const workerUrl = 'file://' + path.resolve(__dirname, 'public', 'render-worker.html').replace(/\\/g, '/');
