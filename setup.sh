@@ -29,18 +29,34 @@ echo "NPM version:  $(npm -v)"
 echo "===> [3/6] Installing Chromium headless dependencies (for 3D thumbnail rendering)..."
 # Standard headless Chromium dependencies on Debian/Ubuntu
 apt-get install -y \
-    libnss3 \
-    libatk1.0-0 \
+    ca-certificates \
+    fonts-liberation \
+    libasound2t64 \
     libatk-bridge2.0-0 \
+    libatk-bridge2.0-0t64 \
+    libatk1.0-0 \
+    libatk1.0-0t64 \
+    libcairo2 \
     libcups2 \
+    libcups2t64 \
+    libdbus-1-3 \
     libdrm2 \
+    libgbm1 \
+    libglib2.0-0t64 \
+    libgtk-3-0t64 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libx11-6 \
+    libxcb1 \
     libxcomposite1 \
     libxdamage1 \
+    libxext6 \
     libxfixes3 \
+    libxkbcommon0 \
     libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
+    libxshmfence1 \
+    xdg-utils \
     libasound2 || apt-get install -y libasound2t64 || true
 
 echo "===> [4/6] Setting up application directories..."
