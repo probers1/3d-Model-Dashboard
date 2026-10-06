@@ -1,5 +1,7 @@
 # PrintVault - 3D Model Management Site for 3D Printing
 
+I wanted this, so I opened up Antigravity and a few hours later I had this.  I was just curious how well the free tier would do on a simple project.
+
 A fast, lightweight self-hosted 3D model manager (Thingiverse / MakerWorld clone) built with Node.js, SQLite, and Three.js. Designed strictly around YAGNI principles: minimal code, zero premature abstractions, no complex ORMs, no Docker required, and targeted directly for bare-metal Linux and Proxmox LXC containers.
 
 ---
