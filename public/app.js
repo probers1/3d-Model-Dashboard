@@ -398,13 +398,16 @@ async function openModelDetail(modelId) {
   }
 }
 
-function updateDimensionsUI(dims) {
+function updateDimensionsUI(dims, metrics = null) {
   const badge = document.getElementById('viewer-dimensions-badge');
   const dimText = document.getElementById('viewer-dim-text');
   const card = document.getElementById('detail-dimensions-card');
   const dimX = document.getElementById('dim-x');
   const dimY = document.getElementById('dim-y');
   const dimZ = document.getElementById('dim-z');
+  const metricVol = document.getElementById('metric-volume');
+  const metricMass = document.getElementById('metric-mass');
+  const metricCost = document.getElementById('metric-cost');
 
   if (!dims) {
     if (badge) badge.style.display = 'none';
@@ -413,7 +416,8 @@ function updateDimensionsUI(dims) {
   }
 
   if (badge && dimText) {
-    dimText.textContent = `${dims.x} × ${dims.y} × ${dims.z} mm`;
+    const massSuffix = metrics && metrics.formattedMass ? ` • ~${metrics.formattedMass}` : '';
+    dimText.textContent = `${dims.x} × ${dims.y} × ${dims.z} mm${massSuffix}`;
     badge.style.display = 'inline-flex';
   }
 
@@ -421,6 +425,13 @@ function updateDimensionsUI(dims) {
     dimX.textContent = dims.x;
     dimY.textContent = dims.y;
     dimZ.textContent = dims.z;
+
+    if (metrics && metricVol && metricMass && metricCost) {
+      metricVol.textContent = metrics.formattedVolume;
+      metricMass.textContent = metrics.formattedMass;
+      metricCost.textContent = metrics.formattedCost;
+    }
+
     card.style.display = 'block';
   }
 }
@@ -458,7 +469,7 @@ async function selectFileForViewing(fileId) {
   try {
     const result = await viewer.loadModel(fileUrl, file.file_ext);
     if (result && result.dimensions) {
-      updateDimensionsUI(result.dimensions);
+      updateDimensionsUI(result.dimensions, result.metrics);
     }
   } catch (err) {
     console.error('Failed to render 3D file:', err);

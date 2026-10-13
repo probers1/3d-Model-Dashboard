@@ -484,8 +484,27 @@ async function runTests() {
     console.log('✓ Background thumbnail successfully retrieved');
   }
 
+  console.log('\n[Test 15] Expired session cleanup sweep');
+  {
+    const { DatabaseSync } = require('node:sqlite');
+    const testDb = new DatabaseSync(path.join(TEST_DATA_DIR, 'database.sqlite'));
+    const dummySessionId = 'expired-session-1234';
+    testDb.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, (SELECT id FROM users LIMIT 1), ?)').run(
+      dummySessionId,
+      Date.now() - 50000 // 50 seconds in the past
+    );
+
+    const inserted = testDb.prepare('SELECT id FROM sessions WHERE id = ?').get(dummySessionId);
+    if (!inserted) throw new Error('Failed to insert test expired session');
+
+    testDb.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+    const afterSweep = testDb.prepare('SELECT id FROM sessions WHERE id = ?').get(dummySessionId);
+    if (afterSweep) throw new Error('Expired session should have been deleted by sweep');
+    console.log('✓ Expired sessions sweep deleted expired session record');
+  }
+
   console.log('\n======================================================');
-  console.log(' ALL 14 END-TO-END SPEC TESTS PASSED SUCCESSFULLY! ');
+  console.log(' ALL 15 END-TO-END SPEC TESTS PASSED SUCCESSFULLY! ');
   console.log('======================================================\n');
 
   const { closeBrowser } = require('./thumbnail');

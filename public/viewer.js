@@ -91,6 +91,7 @@ class Model3DViewer {
 
   clearModel() {
     this.dimensions = null;
+    this.metrics = null;
     if (this.currentMesh) {
       this.scene.remove(this.currentMesh);
       if (this.currentMesh.geometry) this.currentMesh.geometry.dispose();
@@ -100,6 +101,70 @@ class Model3DViewer {
 
   getDimensions() {
     return this.dimensions;
+  }
+
+  getMetrics() {
+    return this.metrics;
+  }
+
+  /**
+   * Computes the exact 3D volume of a mesh in mm³ using signed tetrahedra:
+   * V = sum( v1 . (v2 x v3) ) / 6
+   */
+  calculateMeshVolume(object) {
+    let totalVolumeMm3 = 0;
+
+    const computeGeometry = (geometry) => {
+      if (!geometry || !geometry.attributes || !geometry.attributes.position) return 0;
+      const pos = geometry.attributes.position;
+      const index = geometry.index;
+      let vol = 0;
+
+      // Signed volume of tetrahedron formed by origin and triangle (p1, p2, p3):
+      // det([p1, p2, p3]) / 6.0
+      const calcTetraVolume = (p1x, p1y, p1z, p2x, p2y, p2z, p3x, p3y, p3z) => {
+        return (
+          p1x * (p2y * p3z - p2z * p3y) -
+          p1y * (p2x * p3z - p2z * p3x) +
+          p1z * (p2x * p3y - p2y * p3x)
+        ) / 6.0;
+      };
+
+      if (index) {
+        for (let i = 0; i < index.count; i += 3) {
+          const a = index.getX(i);
+          const b = index.getX(i + 1);
+          const c = index.getX(i + 2);
+
+          vol += calcTetraVolume(
+            pos.getX(a), pos.getY(a), pos.getZ(a),
+            pos.getX(b), pos.getY(b), pos.getZ(b),
+            pos.getX(c), pos.getY(c), pos.getZ(c)
+          );
+        }
+      } else {
+        for (let i = 0; i < pos.count; i += 3) {
+          vol += calcTetraVolume(
+            pos.getX(i), pos.getY(i), pos.getZ(i),
+            pos.getX(i + 1), pos.getY(i + 1), pos.getZ(i + 1),
+            pos.getX(i + 2), pos.getY(i + 2), pos.getZ(i + 2)
+          );
+        }
+      }
+      return vol;
+    };
+
+    if (object.isMesh && object.geometry) {
+      totalVolumeMm3 += computeGeometry(object.geometry);
+    } else {
+      object.traverse((child) => {
+        if (child.isMesh && child.geometry) {
+          totalVolumeMm3 += computeGeometry(child.geometry);
+        }
+      });
+    }
+
+    return Math.abs(totalVolumeMm3);
   }
 
   async loadModel(url, ext) {
@@ -148,6 +213,24 @@ class Model3DViewer {
           formatted: `${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)} mm`
         };
 
+        // Compute 3D Volume (mm³ -> cm³) & PLA Mass (1.24 g/cm³)
+        const volumeMm3 = this.calculateMeshVolume(root);
+        const volumeCm3 = volumeMm3 / 1000.0;
+        const plaDensity = 1.24; // g/cm³ standard for PLA
+        const plaMassGrams = volumeCm3 * plaDensity;
+        const filamentCostPerKg = 20.0; // standard $20.00 / kg filament cost
+        const costUsd = (plaMassGrams / 1000.0) * filamentCostPerKg;
+
+        this.metrics = {
+          volumeMm3: parseFloat(volumeMm3.toFixed(1)),
+          volumeCm3: parseFloat(volumeCm3.toFixed(2)),
+          massGrams: parseFloat(plaMassGrams.toFixed(1)),
+          costUsd: parseFloat(costUsd.toFixed(2)),
+          formattedVolume: `${volumeCm3.toFixed(2)} cm³`,
+          formattedMass: `${plaMassGrams.toFixed(1)} g`,
+          formattedCost: `$${costUsd.toFixed(2)}`
+        };
+
         // Position on bed
         root.position.y -= bbox.min.y;
 
@@ -158,7 +241,7 @@ class Model3DViewer {
         this.scene.add(this.gridHelper);
 
         this.fitCameraToSize(maxDim);
-        resolve({ size, maxDim, dimensions: this.dimensions });
+        resolve({ size, maxDim, dimensions: this.dimensions, metrics: this.metrics });
       };
 
       if (cleanExt === 'stl') {

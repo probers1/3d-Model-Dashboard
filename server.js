@@ -178,6 +178,29 @@ const seedPromise = (async () => {
 })();
 
 // -----------------------------------------------------------------------------
+// Session Cleanup (Startup + Periodic Sweep)
+// -----------------------------------------------------------------------------
+function cleanExpiredSessions() {
+  try {
+    const info = db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+    if (info.changes > 0) {
+      console.log(`[Auth] Cleaned up ${info.changes} expired session(s)`);
+    }
+  } catch (err) {
+    console.error('[Auth] Failed to clean expired sessions:', err.message);
+  }
+}
+
+// Initial sweep on startup
+cleanExpiredSessions();
+
+// Periodic sweep every 30 minutes (unref so it doesn't block process exit)
+const sessionCleanupInterval = setInterval(cleanExpiredSessions, 30 * 60 * 1000);
+if (sessionCleanupInterval.unref) {
+  sessionCleanupInterval.unref();
+}
+
+// -----------------------------------------------------------------------------
 // Express App & Middleware
 // -----------------------------------------------------------------------------
 const app = express();
