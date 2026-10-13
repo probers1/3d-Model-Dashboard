@@ -455,8 +455,37 @@ async function runTests() {
     console.log('✓ Invalid ID and path traversal blocked with HTTP 400');
   }
 
+  console.log('\n[Test 14] Instant upload via decoupled background thumbnail queue');
+  {
+    const stl = generateSTL('speed_test');
+    const formData = new FormData();
+    formData.append('title', 'Instant Upload Test');
+    formData.append('tags', 'speed, benchmark');
+    formData.append('files', new Blob([stl], { type: 'model/stl' }), 'speed.stl');
+
+    const startTime = Date.now();
+    const res = await fetch(`${baseUrl}/api/models`, {
+      method: 'POST',
+      headers: { 'Cookie': userCookie },
+      body: formData
+    });
+    const elapsed = Date.now() - startTime;
+    const data = await res.json();
+    if (!res.ok || !data.id) {
+      throw new Error('Upload failed: ' + JSON.stringify(data));
+    }
+    console.log(`✓ Model created in ${elapsed}ms (decoupled from Puppeteer rendering)`);
+
+    // Verify thumbnail is served from the background queue
+    const thumbRes = await fetch(`${baseUrl}/api/models/${data.id}/thumbnail`);
+    if (!thumbRes.ok) {
+      throw new Error('Background thumbnail failed to resolve');
+    }
+    console.log('✓ Background thumbnail successfully retrieved');
+  }
+
   console.log('\n======================================================');
-  console.log(' ALL 13 END-TO-END SPEC TESTS PASSED SUCCESSFULLY! ');
+  console.log(' ALL 14 END-TO-END SPEC TESTS PASSED SUCCESSFULLY! ');
   console.log('======================================================\n');
 
   const { closeBrowser } = require('./thumbnail');

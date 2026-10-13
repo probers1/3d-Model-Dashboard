@@ -189,6 +189,10 @@
               title="Toggle Wireframe">Wireframe</button>
             <button class="btn btn-secondary btn-sm" id="btn-reset-camera" title="Reset View">Reset View</button>
           </div>
+          <div class="viewer-dimensions-badge" id="viewer-dimensions-badge" style="display: none;">
+            <span class="dim-icon">📐</span>
+            <span id="viewer-dim-text">0 × 0 × 0 mm</span>
+          </div>
         </div>
 
         <!-- Info & Management Pane -->
@@ -214,6 +218,17 @@
           <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; justify-content: space-between;">
             <span>Author: <strong id="detail-author" style="color: var(--text-main);"></strong></span>
             <span id="detail-created"></span>
+          </div>
+
+          <div class="detail-dimensions-card" id="detail-dimensions-card" style="display: none;">
+            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; margin-bottom: 0.35rem;">
+              Dimensions (X × Y × Z)
+            </div>
+            <div class="dimensions-values" id="detail-dimensions-values">
+              <div class="dim-metric"><span class="dim-label">X:</span> <span id="dim-x" class="dim-num">-</span> <span class="dim-unit">mm</span></div>
+              <div class="dim-metric"><span class="dim-label">Y:</span> <span id="dim-y" class="dim-num">-</span> <span class="dim-unit">mm</span></div>
+              <div class="dim-metric"><span class="dim-label">Z:</span> <span id="dim-z" class="dim-num">-</span> <span class="dim-unit">mm</span></div>
+            </div>
           </div>
 
           <div>

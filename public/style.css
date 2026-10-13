@@ -831,3 +831,68 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* Viewer Dimensions Badge Overlay */
+.viewer-dimensions-badge {
+  position: absolute;
+  bottom: 15px;
+  left: 15px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  z-index: 10;
+  background: rgba(18, 18, 20, 0.88);
+  backdrop-filter: blur(8px);
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.825rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--text-main);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.viewer-dimensions-badge .dim-icon {
+  font-size: 0.95rem;
+}
+
+/* Dimensions Info Pane Card */
+.detail-dimensions-card {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
+
+.dimensions-values {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.dim-metric {
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.dim-label {
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-right: 0.2rem;
+}
+
+.dim-num {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.dim-unit {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}

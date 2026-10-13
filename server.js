@@ -13,6 +13,54 @@ const scryptAsync = util.promisify(crypto.scrypt);
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // -----------------------------------------------------------------------------
+// Thumbnail Job Queue (Decoupled Asynchronous Background Processing)
+// -----------------------------------------------------------------------------
+const thumbnailQueue = [];
+const activeThumbnailJobs = new Map();
+let isProcessingThumbnail = false;
+
+function queueThumbnailGeneration(modelId, inputFilePath, outputImagePath) {
+  let resolveJob, rejectJob;
+  const jobPromise = new Promise((resolve, reject) => {
+    resolveJob = resolve;
+    rejectJob = reject;
+  });
+  activeThumbnailJobs.set(modelId, jobPromise);
+
+  thumbnailQueue.push({
+    modelId,
+    inputFilePath,
+    outputImagePath,
+    resolve: resolveJob,
+    reject: rejectJob
+  });
+
+  processThumbnailQueue();
+  return jobPromise;
+}
+
+async function processThumbnailQueue() {
+  if (isProcessingThumbnail || thumbnailQueue.length === 0) return;
+  isProcessingThumbnail = true;
+
+  while (thumbnailQueue.length > 0) {
+    const job = thumbnailQueue.shift();
+    try {
+      console.log(`[Thumbnail Worker] Rendering 3D preview for model: ${job.modelId}`);
+      await generateThumbnail(job.inputFilePath, job.outputImagePath);
+      job.resolve(true);
+    } catch (err) {
+      console.error(`[Thumbnail Worker] Failed for model ${job.modelId}:`, err.message);
+      job.reject(err);
+    } finally {
+      activeThumbnailJobs.delete(job.modelId);
+    }
+  }
+
+  isProcessingThumbnail = false;
+}
+
+// -----------------------------------------------------------------------------
 // Configuration & Environment
 // -----------------------------------------------------------------------------
 // Auto-load .env if present (zero external dependencies)
@@ -459,10 +507,10 @@ app.post('/api/models', requireAuth, upload.array('files'), async (req, res) => 
       insertFileStmt.run(crypto.randomUUID(), modelId, f.filename, f.original_name, f.size, f.file_ext);
     }
 
-    // Generate static 3D thumbnail using first valid STL/OBJ
+    // Queue static 3D thumbnail generation in background (non-blocking)
     const first3DFile = extractedFiles[0];
     const thumbPath = path.join(modelDir, 'thumbnail.png');
-    await generateThumbnail(first3DFile.fullPath, thumbPath);
+    queueThumbnailGeneration(modelId, first3DFile.fullPath, thumbPath);
 
     res.status(201).json({ id: modelId, message: 'Model created successfully' });
   } catch (err) {
@@ -545,7 +593,7 @@ app.delete('/api/models/:id/files/:fileId', requireAuth, async (req, res) => {
   if (remainingFiles.length > 0) {
     const nextFile = path.join(DATA_DIR, 'models', model.id, 'files', remainingFiles[0].filename);
     const thumbPath = path.join(DATA_DIR, 'models', model.id, 'thumbnail.png');
-    await generateThumbnail(nextFile, thumbPath);
+    queueThumbnailGeneration(model.id, nextFile, thumbPath);
   }
 
   res.json({ ok: true, remainingCount: remainingFiles.length });
@@ -596,16 +644,34 @@ app.get('/api/models/:id/download-all', requireAuth, (req, res) => {
 });
 
 // Serve static thumbnail image
-app.get('/api/models/:id/thumbnail', (req, res) => {
+app.get('/api/models/:id/thumbnail', async (req, res) => {
   const { id } = req.params;
   if (!UUID_REGEX.test(id)) {
     return res.status(400).json({ error: 'Invalid model ID format' });
   }
 
   const thumbPath = path.join(DATA_DIR, 'models', id, 'thumbnail.png');
+
+  // If already rendered on disk, serve immediately
   if (fs.existsSync(thumbPath)) {
     return res.sendFile(thumbPath);
   }
+
+  // If currently being rendered in background queue, wait for completion (up to 25s)
+  if (activeThumbnailJobs.has(id)) {
+    try {
+      await Promise.race([
+        activeThumbnailJobs.get(id),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Thumbnail timeout')), 25000))
+      ]);
+      if (fs.existsSync(thumbPath)) {
+        return res.sendFile(thumbPath);
+      }
+    } catch {
+      // Fall through to 404
+    }
+  }
+
   // Return fallback or 404
   res.status(404).send('Thumbnail not found');
 });

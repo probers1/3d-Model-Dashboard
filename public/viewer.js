@@ -90,11 +90,16 @@ class Model3DViewer {
   }
 
   clearModel() {
+    this.dimensions = null;
     if (this.currentMesh) {
       this.scene.remove(this.currentMesh);
       if (this.currentMesh.geometry) this.currentMesh.geometry.dispose();
       this.currentMesh = null;
     }
+  }
+
+  getDimensions() {
+    return this.dimensions;
   }
 
   async loadModel(url, ext) {
@@ -135,6 +140,14 @@ class Model3DViewer {
         bbox.getSize(size);
         const maxDim = Math.max(size.x, size.y, size.z) || 50;
 
+        // Expose dimensions in millimeters (standard unit for STL/OBJ/3MF)
+        this.dimensions = {
+          x: parseFloat(size.x.toFixed(1)),
+          y: parseFloat(size.y.toFixed(1)),
+          z: parseFloat(size.z.toFixed(1)),
+          formatted: `${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)} mm`
+        };
+
         // Position on bed
         root.position.y -= bbox.min.y;
 
@@ -145,7 +158,7 @@ class Model3DViewer {
         this.scene.add(this.gridHelper);
 
         this.fitCameraToSize(maxDim);
-        resolve({ size, maxDim });
+        resolve({ size, maxDim, dimensions: this.dimensions });
       };
 
       if (cleanExt === 'stl') {

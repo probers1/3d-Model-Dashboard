@@ -375,6 +375,7 @@ async function openModelDetail(modelId) {
 
     // Show Modal
     openModal(detailModal);
+    updateDimensionsUI(null);
 
     // Initialize 3D Viewer if not yet created
     const container = document.getElementById('viewer-container');
@@ -390,9 +391,38 @@ async function openModelDetail(modelId) {
     // Load first file into 3D viewer
     if (activeModel.files.length > 0) {
       selectFileForViewing(activeModel.files[0].id);
+    } else {
+      updateDimensionsUI(null);
     }
   } catch (err) {
     console.error('Failed to open model detail:', err);
+  }
+}
+
+function updateDimensionsUI(dims) {
+  const badge = document.getElementById('viewer-dimensions-badge');
+  const dimText = document.getElementById('viewer-dim-text');
+  const card = document.getElementById('detail-dimensions-card');
+  const dimX = document.getElementById('dim-x');
+  const dimY = document.getElementById('dim-y');
+  const dimZ = document.getElementById('dim-z');
+
+  if (!dims) {
+    if (badge) badge.style.display = 'none';
+    if (card) card.style.display = 'none';
+    return;
+  }
+
+  if (badge && dimText) {
+    dimText.textContent = `${dims.x} × ${dims.y} × ${dims.z} mm`;
+    badge.style.display = 'inline-flex';
+  }
+
+  if (card && dimX && dimY && dimZ) {
+    dimX.textContent = dims.x;
+    dimY.textContent = dims.y;
+    dimZ.textContent = dims.z;
+    card.style.display = 'block';
   }
 }
 
@@ -427,9 +457,13 @@ async function selectFileForViewing(fileId) {
 
   const fileUrl = `/api/models/${activeModel.id}/files/${file.id}/download`;
   try {
-    await viewer.loadModel(fileUrl, file.file_ext);
+    const result = await viewer.loadModel(fileUrl, file.file_ext);
+    if (result && result.dimensions) {
+      updateDimensionsUI(result.dimensions);
+    }
   } catch (err) {
     console.error('Failed to render 3D file:', err);
+    updateDimensionsUI(null);
   }
 }
 
@@ -536,6 +570,7 @@ async function deleteModelFile(fileId) {
         selectFileForViewing(activeModel.files[0].id);
       } else {
         viewer.clearModel();
+        updateDimensionsUI(null);
       }
       loadModels(searchInput.value);
     }
@@ -748,7 +783,7 @@ document.getElementById('upload-form').addEventListener('submit', async (e) => {
 
   errBox.style.display = 'none';
   btn.disabled = true;
-  btn.innerHTML = `<span class="spinner"></span> <span>Extracting & Rendering 3D Preview...</span>`;
+  btn.innerHTML = `<span class="spinner"></span> <span>Uploading 3D Model...</span>`;
 
   const formData = new FormData();
   formData.append('title', title);
