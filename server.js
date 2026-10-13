@@ -4,9 +4,13 @@ const multer = require('multer');
 const AdmZip = require('adm-zip');
 const { DatabaseSync } = require('node:sqlite');
 const crypto = require('node:crypto');
+const util = require('node:util');
 const fs = require('fs');
 const path = require('path');
 const { generateThumbnail } = require('./thumbnail');
+
+const scryptAsync = util.promisify(crypto.scrypt);
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // -----------------------------------------------------------------------------
 // Configuration & Environment
@@ -42,7 +46,7 @@ fs.mkdirSync(path.join(DATA_DIR, 'models'), { recursive: true });
 const db = new DatabaseSync(path.join(DATA_DIR, 'database.sqlite'));
 db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
 
-// Initialize tables
+// Initialize tables and indices
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -81,40 +85,49 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE
   );
+
+  CREATE INDEX IF NOT EXISTS idx_model_files_model_id ON model_files(model_id);
+  CREATE INDEX IF NOT EXISTS idx_models_created_at ON models(created_at);
+  CREATE INDEX IF NOT EXISTS idx_models_user_id ON models(user_id);
+  CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+  CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
 `);
 
 // -----------------------------------------------------------------------------
-// Auth Utilities (crypto scrypt)
+// Auth Utilities (crypto scrypt async)
 // -----------------------------------------------------------------------------
-function hashPassword(password) {
+async function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
-  return `${salt}:${hash}`;
+  const derivedKey = await scryptAsync(password, salt, 64);
+  return `${salt}:${derivedKey.toString('hex')}`;
 }
 
-function verifyPassword(password, stored) {
+async function verifyPassword(password, stored) {
   try {
     const [salt, hash] = stored.split(':');
-    const verifyHash = crypto.scryptSync(password, salt, 64).toString('hex');
-    return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(verifyHash, 'hex'));
+    const derivedKey = await scryptAsync(password, salt, 64);
+    return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(derivedKey.toString('hex'), 'hex'));
   } catch {
     return false;
   }
 }
 
 // Seed initial admin if no users exist
-const userCountStmt = db.prepare('SELECT COUNT(*) as count FROM users');
-const { count: totalUsers } = userCountStmt.get();
-if (totalUsers === 0) {
-  console.log(`[Auth] No users found. Seeding initial admin user: "${ADMIN_USER}"`);
-  const adminId = crypto.randomUUID();
-  db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
-    adminId,
-    ADMIN_USER,
-    hashPassword(ADMIN_PASSWORD),
-    'admin'
-  );
-}
+const seedPromise = (async () => {
+  const userCountStmt = db.prepare('SELECT COUNT(*) as count FROM users');
+  const { count: totalUsers } = userCountStmt.get();
+  if (totalUsers === 0) {
+    console.log(`[Auth] No users found. Seeding initial admin user: "${ADMIN_USER}"`);
+    const adminId = crypto.randomUUID();
+    const adminHash = await hashPassword(ADMIN_PASSWORD);
+    db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
+      adminId,
+      ADMIN_USER,
+      adminHash,
+      'admin'
+    );
+  }
+})();
 
 // -----------------------------------------------------------------------------
 // Express App & Middleware
@@ -123,6 +136,12 @@ const app = express();
 app.use(express.json());
 app.use(cookieParser(SESSION_SECRET));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Ensure initial admin seed is complete before serving requests
+app.use(async (req, res, next) => {
+  await seedPromise;
+  next();
+});
 
 // Upload configuration (memory storage so we can handle zips or multi-files seamlessly)
 const upload = multer({
@@ -176,14 +195,14 @@ function requireAdmin(req, res, next) {
 // -----------------------------------------------------------------------------
 // Authentication Endpoints
 // -----------------------------------------------------------------------------
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password required' });
   }
 
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
-  if (!user || !verifyPassword(password, user.password_hash)) {
+  if (!user || !(await verifyPassword(password, user.password_hash))) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
 
@@ -227,7 +246,7 @@ app.get('/api/users', requireAdmin, (req, res) => {
   res.json(users);
 });
 
-app.post('/api/users', requireAdmin, (req, res) => {
+app.post('/api/users', requireAdmin, async (req, res) => {
   const { username, password, role } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
@@ -236,10 +255,11 @@ app.post('/api/users', requireAdmin, (req, res) => {
 
   try {
     const id = crypto.randomUUID();
+    const passwordHash = await hashPassword(password);
     db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
       id,
       username.trim(),
-      hashPassword(password),
+      passwordHash,
       assignedRole
     );
     res.status(201).json({ id, username: username.trim(), role: assignedRole });
@@ -347,7 +367,7 @@ app.post('/api/models', requireAuth, upload.array('files'), async (req, res) => 
   try {
     const { title, description, tags } = req.body;
     if (!title || !req.files || req.files.length === 0) {
-      return res.status(400).json({ error: 'Title and at least one .stl/.obj or .zip file are required' });
+      return res.status(400).json({ error: 'Title and at least one .stl/.obj/.3mf or .zip file are required' });
     }
 
     const modelId = crypto.randomUUID();
@@ -368,7 +388,7 @@ app.post('/api/models', requireAuth, upload.array('files'), async (req, res) => 
           if (entry.entryName.includes('__MACOSX') || path.basename(entry.entryName).startsWith('.')) continue;
 
           const entryExt = path.extname(entry.entryName).toLowerCase().slice(1);
-          if (entryExt === 'stl' || entryExt === 'obj') {
+          if (entryExt === 'stl' || entryExt === 'obj' || entryExt === '3mf') {
             let safeName = path.basename(entry.entryName);
             let targetPath = path.join(filesDir, safeName);
             let counter = 1;
@@ -389,7 +409,7 @@ app.post('/api/models', requireAuth, upload.array('files'), async (req, res) => 
             });
           }
         }
-      } else if (ext === 'stl' || ext === 'obj') {
+      } else if (ext === 'stl' || ext === 'obj' || ext === '3mf') {
         let safeName = path.basename(file.originalname);
         let targetPath = path.join(filesDir, safeName);
         let counter = 1;
@@ -413,7 +433,7 @@ app.post('/api/models', requireAuth, upload.array('files'), async (req, res) => 
 
     if (extractedFiles.length === 0) {
       fs.rmSync(modelDir, { recursive: true, force: true });
-      return res.status(400).json({ error: 'No valid .stl or .obj files found in upload' });
+      return res.status(400).json({ error: 'No valid .stl, .obj, or .3mf files found in upload' });
     }
 
     // Insert model
@@ -577,11 +597,16 @@ app.get('/api/models/:id/download-all', requireAuth, (req, res) => {
 
 // Serve static thumbnail image
 app.get('/api/models/:id/thumbnail', (req, res) => {
-  const thumbPath = path.join(DATA_DIR, 'models', req.params.id, 'thumbnail.png');
+  const { id } = req.params;
+  if (!UUID_REGEX.test(id)) {
+    return res.status(400).json({ error: 'Invalid model ID format' });
+  }
+
+  const thumbPath = path.join(DATA_DIR, 'models', id, 'thumbnail.png');
   if (fs.existsSync(thumbPath)) {
     return res.sendFile(thumbPath);
   }
-  // Return a transparent 1x1 pixel or fallback
+  // Return fallback or 404
   res.status(404).send('Thumbnail not found');
 });
 

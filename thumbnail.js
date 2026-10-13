@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
+const AdmZip = require('adm-zip');
 
 let browserInstance = null;
 
@@ -28,16 +29,56 @@ async function getBrowser() {
 }
 
 /**
- * Generates a static PNG thumbnail of a 3D model (.stl or .obj)
- * @param {string} inputFilePath - Absolute path to the .stl or .obj file
+ * Generates a static PNG thumbnail of a 3D model (.stl, .obj, or .3mf)
+ * @param {string} inputFilePath - Absolute path to the .stl, .obj, or .3mf file
  * @param {string} outputImagePath - Absolute path where thumbnail.png should be written
  */
 async function generateThumbnail(inputFilePath, outputImagePath) {
   let page = null;
   try {
     const ext = path.extname(inputFilePath).slice(1).toLowerCase();
-    if (ext !== 'stl' && ext !== 'obj') {
+    if (ext !== 'stl' && ext !== 'obj' && ext !== '3mf') {
       return false;
+    }
+
+    // For .3mf files, check if an embedded thumbnail image already exists inside the package
+    if (ext === '3mf') {
+      try {
+        const zip = new AdmZip(inputFilePath);
+        const entries = zip.getEntries();
+        const preferredThumbs = [
+          'metadata/thumbnail.png',
+          'auxiliaries/.thumbnails/thumbnail_middle.png',
+          'auxiliaries/.thumbnails/thumbnail_3mf.png',
+          'metadata/plate_1.png',
+          'metadata/top_1.png'
+        ];
+
+        let matchedEntry = null;
+        for (const pref of preferredThumbs) {
+          matchedEntry = entries.find(e => e.entryName.toLowerCase().replace(/\\/g, '/').endsWith(pref));
+          if (matchedEntry) break;
+        }
+
+        if (!matchedEntry) {
+          matchedEntry = entries.find(e => {
+            const name = e.entryName.toLowerCase();
+            return (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) &&
+              (name.includes('thumbnail') || name.includes('preview') || name.includes('plate_1'));
+          });
+        }
+
+        if (matchedEntry) {
+          const imgData = matchedEntry.getData();
+          if (imgData && imgData.length > 500) {
+            fs.mkdirSync(path.dirname(outputImagePath), { recursive: true });
+            fs.writeFileSync(outputImagePath, imgData);
+            return true;
+          }
+        }
+      } catch (zipErr) {
+        console.warn('[Thumbnail] Embedded 3MF thumbnail extraction bypassed:', zipErr.message);
+      }
     }
 
     const fileBuffer = fs.readFileSync(inputFilePath);

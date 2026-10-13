@@ -56,6 +56,63 @@ f 4 1 5 8
 `;
 }
 
+// Helper to generate a minimal valid 3MF
+function generate3MF() {
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>`;
+
+  const rels = `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+</Relationships>`;
+
+  const model = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <mesh>
+        <vertices>
+          <vertex x="0" y="0" z="0"/>
+          <vertex x="20" y="0" z="0"/>
+          <vertex x="20" y="20" z="0"/>
+          <vertex x="0" y="20" z="0"/>
+          <vertex x="0" y="0" z="20"/>
+          <vertex x="20" y="0" z="20"/>
+          <vertex x="20" y="20" z="20"/>
+          <vertex x="0" y="20" z="20"/>
+        </vertices>
+        <triangles>
+          <triangle v1="0" v2="2" v3="1"/>
+          <triangle v1="0" v2="3" v3="2"/>
+          <triangle v1="4" v2="5" v3="6"/>
+          <triangle v1="4" v2="6" v3="7"/>
+          <triangle v1="0" v2="1" v3="5"/>
+          <triangle v1="0" v2="5" v3="4"/>
+          <triangle v1="1" v2="2" v3="6"/>
+          <triangle v1="1" v2="6" v3="5"/>
+          <triangle v1="2" v2="3" v3="7"/>
+          <triangle v1="2" v2="7" v3="6"/>
+          <triangle v1="3" v2="0" v3="4"/>
+          <triangle v1="3" v2="4" v3="7"/>
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build>
+    <item objectid="1"/>
+  </build>
+</model>`;
+
+  const zip = new AdmZip();
+  zip.addFile('[Content_Types].xml', Buffer.from(contentTypes, 'utf-8'));
+  zip.addFile('_rels/.rels', Buffer.from(rels, 'utf-8'));
+  zip.addFile('3D/3dmodel.model', Buffer.from(model, 'utf-8'));
+  return zip.toBuffer();
+}
+
 async function runTests() {
   const PORT = 3456;
   const TEST_DATA_DIR = path.join(__dirname, 'test_data');
@@ -341,8 +398,65 @@ async function runTests() {
     console.log('✓ Model deleted successfully');
   }
 
+  console.log('\n[Test 12] Upload and render a .3mf model file');
+  {
+    const mfBuffer = generate3MF();
+    const formData = new FormData();
+    formData.append('title', 'Test 3MF Cube Model');
+    formData.append('description', 'Native 3MF format upload test');
+    formData.append('tags', '3mf, test, cube');
+    formData.append('files', new Blob([mfBuffer], { type: 'application/vnd.ms-package.3dmanufacturing-3dmodel+xml' }), 'test_cube.3mf');
+
+    const res = await fetch(`${baseUrl}/api/models`, {
+      method: 'POST',
+      headers: { 'Cookie': userCookie },
+      body: formData
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.id) {
+      throw new Error('3MF model upload failed: ' + JSON.stringify(data));
+    }
+    const mfModelId = data.id;
+    console.log('✓ 3MF model created with id:', mfModelId);
+
+    // Verify model details and file records
+    const detailRes = await fetch(`${baseUrl}/api/models/${mfModelId}`, {
+      headers: { 'Cookie': userCookie }
+    });
+    const modelDetail = await detailRes.json();
+    if (modelDetail.files.length !== 1 || modelDetail.files[0].file_ext !== '3mf') {
+      throw new Error('Expected 1 .3mf file, found: ' + JSON.stringify(modelDetail.files));
+    }
+    console.log('✓ 3MF file record verified:', modelDetail.files[0].original_name, `(${modelDetail.files[0].file_ext})`);
+
+    // Verify thumbnail exists and is served for 3MF
+    const thumbRes = await fetch(`${baseUrl}/api/models/${mfModelId}/thumbnail`);
+    if (!thumbRes.ok || thumbRes.headers.get('content-type') !== 'image/png') {
+      throw new Error('3MF Thumbnail request failed');
+    }
+    const thumbBuf = await thumbRes.arrayBuffer();
+    if (thumbBuf.byteLength < 1000) {
+      throw new Error('3MF Thumbnail too small: ' + thumbBuf.byteLength);
+    }
+    console.log(`✓ 3MF Thumbnail generated and served (${thumbBuf.byteLength} bytes)`);
+  }
+
+  console.log('\n[Test 13] Security: UUID validation on /api/models/:id/thumbnail');
+  {
+    const invalidIdRes = await fetch(`${baseUrl}/api/models/invalid-non-uuid/thumbnail`);
+    if (invalidIdRes.status !== 400) {
+      throw new Error(`Expected 400 for invalid UUID, got ${invalidIdRes.status}`);
+    }
+    const pathTraversalRes = await fetch(`${baseUrl}/api/models/..%2f..%2fpackage.json/thumbnail`);
+    if (pathTraversalRes.status !== 400) {
+      throw new Error(`Expected 400 for path traversal attempt, got ${pathTraversalRes.status}`);
+    }
+    console.log('✓ Invalid ID and path traversal blocked with HTTP 400');
+  }
+
   console.log('\n======================================================');
-  console.log(' ALL 11 END-TO-END SPEC TESTS PASSED SUCCESSFULLY! ');
+  console.log(' ALL 13 END-TO-END SPEC TESTS PASSED SUCCESSFULLY! ');
   console.log('======================================================\n');
 
   const { closeBrowser } = require('./thumbnail');

@@ -660,7 +660,7 @@ async function traverseEntry(entry, fileList) {
         entry.file(resolve, reject);
       });
       const ext = file.name.split('.').pop().toLowerCase();
-      if (['stl', 'obj', 'zip'].includes(ext)) {
+      if (['stl', 'obj', '3mf', 'zip'].includes(ext)) {
         fileList.push(file);
       }
     } catch (err) {
@@ -691,11 +691,11 @@ async function traverseEntry(entry, fileList) {
 function handleFilesSelected(files, folderName = '') {
   const valid = files.filter(f => {
     const ext = f.name.split('.').pop().toLowerCase();
-    return ['stl', 'obj', 'zip'].includes(ext);
+    return ['stl', 'obj', '3mf', 'zip'].includes(ext);
   });
 
   if (valid.length === 0) {
-    alert('No valid .stl, .obj, or .zip files found in selection.');
+    alert('No valid .stl, .obj, .3mf, or .zip files found in selection.');
     return;
   }
 
@@ -736,7 +736,7 @@ function removeUploadFile(index) {
 document.getElementById('upload-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   if (queuedUploadFiles.length === 0) {
-    alert('Please select at least one .stl/.obj or .zip file.');
+    alert('Please select at least one .stl, .obj, .3mf, or .zip file.');
     return;
   }
 

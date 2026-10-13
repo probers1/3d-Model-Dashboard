@@ -11,6 +11,8 @@
   <script src="./vendor/three.min.js"></script>
   <script src="./vendor/STLLoader.js"></script>
   <script src="./vendor/OBJLoader.js"></script>
+  <script src="./vendor/fflate.min.js"></script>
+  <script src="./vendor/3MFLoader.js"></script>
 </head>
 <body>
   <canvas id="canvas" width="640" height="480"></canvas>
@@ -95,6 +97,27 @@
             }
           });
           
+          // Center the object
+          const box = new THREE.Box3().setFromObject(obj);
+          const center = new THREE.Vector3();
+          box.getCenter(center);
+          obj.position.sub(center);
+          rootObject = obj;
+        } else if (ext === '3mf') {
+          const LoaderClass = THREE.ThreeMFLoader || THREE['3MFLoader'];
+          if (!LoaderClass) {
+            throw new Error('3MFLoader is not available');
+          }
+          const loader = new LoaderClass();
+          const obj = loader.parse(buffer);
+          obj.traverse(child => {
+            if (child.isMesh) {
+              child.material = material;
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+
           // Center the object
           const box = new THREE.Box3().setFromObject(obj);
           const center = new THREE.Vector3();

@@ -110,7 +110,7 @@ class Model3DViewer {
           root = new THREE.Mesh(object, this.material);
           root.castShadow = true;
           root.receiveShadow = true;
-        } else if (cleanExt === 'obj') {
+        } else if (cleanExt === 'obj' || cleanExt === '3mf') {
           object.traverse((child) => {
             if (child.isMesh) {
               child.material = this.material;
@@ -118,7 +118,7 @@ class Model3DViewer {
               child.receiveShadow = true;
             }
           });
-          // Center OBJ
+          // Center model
           const box = new THREE.Box3().setFromObject(object);
           const center = new THREE.Vector3();
           box.getCenter(center);
@@ -153,6 +153,13 @@ class Model3DViewer {
         loader.load(url, onLoad, undefined, reject);
       } else if (cleanExt === 'obj') {
         const loader = new THREE.OBJLoader();
+        loader.load(url, onLoad, undefined, reject);
+      } else if (cleanExt === '3mf') {
+        const LoaderClass = THREE.ThreeMFLoader || THREE['3MFLoader'];
+        if (!LoaderClass) {
+          return reject(new Error('3MFLoader is not available. Ensure 3MFLoader.js and fflate.min.js are loaded.'));
+        }
+        const loader = new LoaderClass();
         loader.load(url, onLoad, undefined, reject);
       } else {
         reject(new Error('Unsupported file extension: ' + cleanExt));
