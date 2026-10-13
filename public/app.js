@@ -332,8 +332,7 @@ function createModelCardHTML(m) {
   return `
     <div class="model-card" data-id="${m.id}">
       <div class="card-thumb">
-        <img src="${thumbUrl}" alt="${m.title}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-        <div class="card-thumb-placeholder" style="display: none;">🧊</div>
+        <img src="${thumbUrl}" alt="${m.title}" loading="lazy" onerror="this.onerror=null; this.src='/placeholder-thumb.svg';">
         <span class="card-badge-count">📦 ${m.file_count || 1}</span>
       </div>
       <div class="card-body">

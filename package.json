@@ -1,5 +1,5 @@
 {
-  "name": "anti-3d-model-dashboard",
+  "name": "printvault",
   "version": "1.0.0",
   "description": "Minimal 3D Model Management Platform for 3D Printing",
   "main": "server.js",

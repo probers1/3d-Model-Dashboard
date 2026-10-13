@@ -1,5 +1,5 @@
 [Unit]
-Description=3D Model Management Dashboard (Thingiverse/MakerWorld clone)
+Description=PrintVault - 3D Model Management Dashboard
 After=network.target
 
 [Service]

@@ -43,7 +43,7 @@ A fast, lightweight self-hosted 3D model manager (Thingiverse / MakerWorld clone
 ### 2. Setup & Run
 ```bash
 # Clone or enter directory
-cd Anti-3d-model-dashboard
+cd printvault
 
 # Install dependencies
 npm install
@@ -61,6 +61,19 @@ Open your browser at **`http://localhost:3005`**.
 - **Username:** `admin`
 - **Password:** `adminpassword`
 *(Configurable via `ADMIN_USER` and `ADMIN_PASSWORD` in your `.env`)*
+
+---
+
+## Docker & Docker Compose Deployment
+
+If you prefer containers over bare-metal or Proxmox LXC:
+
+```bash
+# Start container with persistent storage mount
+docker compose up -d
+```
+
+Your data and models are automatically persisted in `./data`. The container includes all required headless Chromium libraries for Three.js rendering.
 
 ---
 

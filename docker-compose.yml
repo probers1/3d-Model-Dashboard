@@ -1,0 +1,15 @@
+services:
+  printvault:
+    build: .
+    container_name: printvault
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    environment:
+      - PORT=3005
+      - DATA_DIR=/app/data
+      - SESSION_SECRET=printvault-secure-session-key
+      - ADMIN_USER=admin
+      - ADMIN_PASSWORD=adminpassword
+    volumes:
+      - ./data:/app/data

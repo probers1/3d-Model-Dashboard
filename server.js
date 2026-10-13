@@ -672,7 +672,11 @@ app.get('/api/models/:id/thumbnail', async (req, res) => {
     }
   }
 
-  // Return fallback or 404
+  // Return fallback SVG if available, otherwise 404
+  const fallbackSvg = path.join(__dirname, 'public', 'placeholder-thumb.svg');
+  if (fs.existsSync(fallbackSvg)) {
+    return res.status(404).sendFile(fallbackSvg);
+  }
   res.status(404).send('Thumbnail not found');
 });
 
@@ -681,7 +685,7 @@ app.get('/api/models/:id/thumbnail', async (req, res) => {
 // -----------------------------------------------------------------------------
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`=======================================================`);
-  console.log(`3D Model Management Dashboard running at:`);
+  console.log(`PrintVault - 3D Model Management Dashboard running at:`);
   console.log(`- Local:   http://localhost:${PORT}`);
   console.log(`- Data:    ${DATA_DIR}`);
   console.log(`=======================================================`);
