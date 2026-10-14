@@ -12,9 +12,56 @@ const { generateThumbnail } = require('./thumbnail');
 const scryptAsync = util.promisify(crypto.scrypt);
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// -----------------------------------------------------------------------------
+// =============================================================================
+// Rate Limiting Middleware
+// =============================================================================
+const rateLimitStore = new Map(); // Simple in-memory store for rate limiting
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 60 seconds
+const RATE_LIMIT_MAX_REQUESTS = 100; // Max 10 requests per window
+
+function createRateLimiter() {
+  return function rateLimit(req, res, next) {
+    const ip = req.ip || req.connection.remoteAddress;
+    const now = Date.now();
+    const windowStart = now - RATE_LIMIT_WINDOW_MS;
+
+    // Clean up old entries
+    for (const [ip2, timestamps] of rateLimitStore.entries()) {
+      if (now - timestamps.timestamps[0] > RATE_LIMIT_WINDOW_MS) {
+        rateLimitStore.delete(ip2);
+      } else {
+        timestamps.timestamps = timestamps.timestamps.filter(
+          ts => ts > windowStart
+        );
+      }
+    }
+
+    // Check current request count
+    let timestamps = rateLimitStore.get(ip);
+    if (!timestamps) {
+      timestamps = { timestamps: [], resetAt: now + RATE_LIMIT_WINDOW_MS };
+      rateLimitStore.set(ip, timestamps);
+    } else {
+      timestamps.timestamps.push(now);
+      timestamps.resetAt = Math.max(timestamps.resetAt, now + RATE_LIMIT_WINDOW_MS);
+    }
+
+    if (timestamps.timestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
+      return res.status(429).json({
+        error: 'Too many requests. Please try again after 60 seconds.',
+        retryAfter: Math.ceil((timestamps.resetAt - now) / 1000)
+      });
+    }
+
+    next();
+  };
+}
+
+const rateLimiter = createRateLimiter();
+
+// =============================================================================
 // Thumbnail Job Queue (Decoupled Asynchronous Background Processing)
-// -----------------------------------------------------------------------------
+// =============================================================================
 const thumbnailQueue = [];
 const activeThumbnailJobs = new Map();
 let isProcessingThumbnail = false;
@@ -81,7 +128,8 @@ if (fs.existsSync(envPath)) {
 
 const PORT = process.env.PORT || 3005;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || './data');
-const SESSION_SECRET = process.env.SESSION_SECRET || 'anti-3d-model-secret-key-default';
+// Generate random SESSION_SECRET if not provided in environment (security best practice)
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const ADMIN_USER = process.env.ADMIN_USER || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'adminpassword';
 
@@ -101,7 +149,8 @@ db.exec(`
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'user',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    password_changed_at DATETIME  
   );
 
   CREATE TABLE IF NOT EXISTS sessions (
@@ -141,6 +190,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
 `);
 
+// Migration: add password_changed_at if it doesn't exist yet
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN password_changed_at DATETIME`);
+} catch (err) {
+  // Column already exists – ignore the error
+}
+
 // -----------------------------------------------------------------------------
 // Auth Utilities (crypto scrypt async)
 // -----------------------------------------------------------------------------
@@ -164,8 +220,10 @@ async function verifyPassword(password, stored) {
 const seedPromise = (async () => {
   const userCountStmt = db.prepare('SELECT COUNT(*) as count FROM users');
   const { count: totalUsers } = userCountStmt.get();
+
   if (totalUsers === 0) {
     console.log(`[Auth] No users found. Seeding initial admin user: "${ADMIN_USER}"`);
+    console.log('[Auth] IMPORTANT: Change your password immediately after first login!');
     const adminId = crypto.randomUUID();
     const adminHash = await hashPassword(ADMIN_PASSWORD);
     db.prepare('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
@@ -174,6 +232,15 @@ const seedPromise = (async () => {
       adminHash,
       'admin'
     );
+  } else {
+    console.log('[Auth] Admin account already exists.');
+  }
+
+  // Track if admin has changed their password (to allow future default login)
+  const adminStmt = db.prepare('SELECT id FROM users WHERE username = ? AND role = \'admin\'');
+  const admin = adminStmt.get(ADMIN_USER);
+  if (admin) {
+    db.prepare('UPDATE users SET password_changed_at = CURRENT_TIMESTAMP WHERE id = ?').run(admin.id);
   }
 })();
 
@@ -205,8 +272,19 @@ if (sessionCleanupInterval.unref) {
 // -----------------------------------------------------------------------------
 const app = express();
 app.use(express.json());
+app.use(rateLimiter); // Apply rate limiting to all routes
 app.use(cookieParser(SESSION_SECRET));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Health check endpoint for load balancers and systemd health monitoring
+app.get('/api/health', (req, res) => {
+  try {
+    const dbCheck = db.prepare('SELECT 1 as ok').get();
+    res.json({ status: 'ok', timestamp: Date.now(), uptime: process.uptime() });
+  } catch (err) {
+    res.status(503).json({ status: 'error', error: err.message });
+  }
+});
 
 // Ensure initial admin seed is complete before serving requests
 app.use(async (req, res, next) => {
@@ -275,6 +353,27 @@ app.post('/api/auth/login', async (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   if (!user || !(await verifyPassword(password, user.password_hash))) {
     return res.status(401).json({ error: 'Invalid username or password' });
+  }
+
+  // Force admin to change password on first login (never allow default password to persist)
+  if (user.username === ADMIN_USER && user.role === 'admin') {
+    const adminStmt = db.prepare('SELECT id FROM users WHERE username = ? AND role = "admin"');
+    const admin = adminStmt.get(ADMIN_USER);
+
+    // Check if password has already been changed (password_changed_at is set)
+    const isAdminDefaultPassword = !admin.password_changed_at;
+
+    if (isAdminDefaultPassword) {
+      console.log('[Auth] First login detected for admin. Forcing password change.');
+      const newPasswordHash = await hashPassword(password);
+      db.prepare('UPDATE users SET password_hash = ?, password_changed_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(newPasswordHash, admin.id);
+
+      return res.status(200).json({
+        message: 'Password changed successfully. Please log in again with your new password.',
+        user: { id: admin.id, username: ADMIN_USER, role: 'admin' }
+      });
+    }
   }
 
   const sessionId = crypto.randomUUID();
@@ -704,12 +803,68 @@ app.get('/api/models/:id/thumbnail', async (req, res) => {
 });
 
 // -----------------------------------------------------------------------------
-// Start Server
+// Graceful Shutdown Handler
 // -----------------------------------------------------------------------------
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`=======================================================`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`=========================================================`);
   console.log(`PrintVault - 3D Model Management Dashboard running at:`);
   console.log(`- Local:   http://localhost:${PORT}`);
   console.log(`- Data:    ${DATA_DIR}`);
-  console.log(`=======================================================`);
+  console.log(`=========================================================`);
 });
+
+function gracefulShutdown(signal) {
+  console.log(`\n[Server] Received ${signal}. Shutting down gracefully...`);
+
+  server.close(async () => {
+    console.log('[Server] HTTP server closed.');
+
+    try {
+      const { closeBrowser } = require('./thumbnail');
+      await closeBrowser();
+      console.log('[Server] Browser instance closed.');
+    } catch (err) {
+      console.warn('[Server] Failed to close browser:', err.message);
+    }
+
+    try {
+      db.close?.();
+      console.log('[Server] Database connection closed.');
+    } catch (err) {
+      console.warn('[Server] Failed to close database:', err.message);
+    }
+
+    if (activeThumbnailJobs.size > 0) {
+      console.log(`[Server] ${activeThumbnailJobs.size} pending thumbnail jobs were cancelled.`);
+    }
+
+    try {
+      const { execSync } = require('child_process');
+      execSync('systemctl stop app.service', { stdio: 'inherit' });
+      console.log('[Server] Systemd service stopped.');
+    } catch (err) {
+      // Not running under systemd, ignore
+    }
+
+    process.exit(0);
+  });
+
+  setTimeout(() => {
+    console.error('[Server] Graceful shutdown timed out. Force exiting.');
+    process.kill(process.pid, 'SIGKILL');
+  }, 30000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// -----------------------------------------------------------------------------
+// Start Server
+// -----------------------------------------------------------------------------
+//app.listen(PORT, '0.0.0.0', () => {
+//  console.log(`=======================================================`);
+//  console.log(`PrintVault - 3D Model Management Dashboard running at:`);
+//  console.log(`- Local:   http://localhost:${PORT}`);
+//  console.log(`- Data:    ${DATA_DIR}`);
+//  console.log(`=======================================================`);
+//});
