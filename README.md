@@ -2,11 +2,11 @@
 
 I wanted this, so I opened up Antigravity and a few hours later I had this.  I was just curious how well the free tier would do on a simple project.
 
-A fast, lightweight self-hosted 3D model manager (Thingiverse / MakerWorld clone) built with Node.js, SQLite, and Three.js. Designed strictly around YAGNI principles: minimal code, zero premature abstractions, no complex ORMs, no Docker required, and targeted directly for bare-metal Linux and Proxmox LXC containers.
+A fast, lightweight self-hosted 3D model manager (Thingiverse / MakerWorld clone) built with **TypeScript**, SQLite, and Three.js. Designed strictly around YAGNI principles: minimal code, zero premature abstractions, no complex ORMs, no Docker required, and targeted directly for bare-metal Linux and Proxmox LXC containers.
 
 ---
 
-## Features
+## TypeScript Features
 
 - **Multi-File & Archive Uploads**: Upload multiple `.stl` and `.obj` files simultaneously, or drop in a `.zip` archive to automatically extract all 3D files into a single unified model entry.
 - **Server-Side 3D Thumbnail Previews**: Automatically renders a static, standardized isometric thumbnail upon model creation using a headless browser (Puppeteer) and Three.js canvas snapshot.
@@ -24,17 +24,16 @@ A fast, lightweight self-hosted 3D model manager (Thingiverse / MakerWorld clone
 
 ---
 
-## Tech Stack
+## TypeScript Tech Stack
 
 | Layer | Technology |
 |---|---|
 | Runtime | **Node.js** (v22+ LTS or v24) |
+| Language | **TypeScript** |
 | Database | **`node:sqlite`** (Node built-in `DatabaseSync` — zero C++ build dependencies) |
 | Server / API | **Express.js**, **Multer**, **AdmZip**, **Cookie-Parser** |
 | 3D Thumbnail Gen | **Puppeteer** (headless Chromium rendering Three.js snapshot) |
 | Client 3D Viewer | **Three.js** (WebGL, OrbitControls, STLLoader, OBJLoader) |
-| Deployment | **systemd** service on Debian / Ubuntu / Proxmox LXC |
-
 ---
 
 ## Local Development (Windows / Linux / macOS)
@@ -47,8 +46,11 @@ A fast, lightweight self-hosted 3D model manager (Thingiverse / MakerWorld clone
 # Clone or enter directory
 cd printvault
 
-# Install dependencies
+# Install dependencies (includes TypeScript, @types/*, puppeteer, three.js, etc.)
 npm install
+
+# Build the TypeScript project
+npm run build
 
 # (Optional) Configure environment
 cp .env.example .env
@@ -84,6 +86,7 @@ Your data and models are automatically persisted in `./data`. The container incl
 Targeted for Debian 12 (Bookworm) or Ubuntu 22.04 / 24.04 inside a standard Proxmox LXC container (unprivileged or privileged).
 
 ### Step 1: Create Container in Proxmox
+
 Create an LXC container with:
 - **OS**: Debian 12 or Ubuntu 24.04
 - **Cores**: 2+
@@ -91,6 +94,7 @@ Create an LXC container with:
 - **Disk**: 8-16 GB (or bind mount host storage for models)
 
 ### Step 2: Bind-Mount Host Storage (Recommended)
+
 To keep model files and the SQLite database on your host filesystem or ZFS dataset (outside the container):
 
 On your **Proxmox VE host shell**:
@@ -100,11 +104,12 @@ pct set 105 -mp0 /mnt/storage/3d-models,mp=/opt/3d-models/data
 ```
 
 ### Step 3: Run Automated Setup Script
+
 Inside the LXC container:
 ```bash
 # Clone or copy project into container
-git clone <your-repo-url> /opt/3d-models
-cd /opt/3d-models
+git clone <your-repo-url> /opt/printvault
+cd /opt/printvault
 
 # Make setup script executable and run
 chmod +x setup.sh
@@ -113,11 +118,13 @@ chmod +x setup.sh
 
 The script automatically:
 1. Installs Node.js v22 LTS and required headless Chromium packages (`libnss3`, `libgbm1`, etc.).
-2. Creates `/opt/3d-models/data`.
-3. Runs `npm install --omit=dev`.
-4. Installs and starts the `app.service` systemd unit.
+2. Creates `/opt/printvault/data`.
+3. Runs `npm install --omit=dev` (installs TypeScript, @types/*, puppeteer, three.js, etc.).
+4. Builds the TypeScript project with `npm run build`.
+5. Installs and starts the `app.service` systemd unit.
 
 ### Step 4: Service Management
+
 ```bash
 # Check service status
 systemctl status app.service
@@ -147,9 +154,10 @@ systemctl restart app.service
 
 ```
 .
-├── server.js               # Core backend: REST API, SQLite schema, auth, model upload & CRUD
-├── thumbnail.js            # Headless Puppeteer 3D snapshot renderer
-├── package.json            # Minimal dependencies
+├── server.ts               # Core backend: REST API, SQLite schema, auth, model upload & CRUD (TypeScript)
+├── thumbnail.ts            # Headless Puppeteer 3D snapshot renderer (TypeScript)
+├── package.json            # Minimal dependencies (typescript, ts-node, puppeteer, three.js, etc.)
+├── tsconfig.json           # TypeScript configuration
 ├── app.service             # systemd unit definition for production
 ├── setup.sh                # Automated setup script for bare-metal / Proxmox LXC
 ├── .env.example            # Environment variables template
@@ -168,3 +176,9 @@ systemctl restart app.service
             └── files/
                 └── {file.stl}
 ```
+
+---
+
+## License
+
+MIT — feel free to use, modify, and distribute.
