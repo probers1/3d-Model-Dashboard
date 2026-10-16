@@ -2,13 +2,13 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import multer from 'multer';
 import AdmZip from 'adm-zip';
-import { DatabaseSync } from 'node:sqlite';
+import Database from 'better-sqlite3';
 import crypto from 'crypto';
 import util from 'util';
 import fs from 'fs';
 import path from 'path';
-import * as thumbnailModule from '../thumbnail';
-import * as passwordModule from '../utils/password';
+import * as thumbnailModule from './thumbnail';
+import * as passwordModule from './utils/password';
 const { generateThumbnail, closeBrowser } = thumbnailModule;
 const { hashPassword, verifyPassword } = passwordModule;
 
@@ -33,8 +33,9 @@ function queueThumbnailGeneration(
   inputFilePath: string,
   outputImagePath: string
 ): Promise<unknown> {
-  let resolveJob: (value: unknown) => void;
-  let rejectJob: (reason?: unknown) => void;
+  // Use definite assignment operator to satisfy TypeScript
+  let resolveJob!: (value: unknown) => void;
+  let rejectJob!: (reason?: unknown) => void;
   const jobPromise = new Promise((resolve, reject) => {
     resolveJob = resolve;
     rejectJob = reject;
@@ -71,7 +72,9 @@ async function processThumbnailQueue() {
 // -----------------------------------------------------------------------------
 // Configuration & Environment
 // -----------------------------------------------------------------------------
-// Auto-load .env if present (zero external dependencies)
+// Load environment variables using dotenv if available
+import * as dotenv from 'dotenv';
+dotenv.config();
 const envPath = path.join(process.cwd(), '.env');
 if (fs.existsSync(envPath)) {
   const envContent = fs.readFileSync(envPath, 'utf8');
@@ -100,7 +103,7 @@ fs.mkdirSync(path.join(DATA_DIR, 'models'), { recursive: true });
 // -----------------------------------------------------------------------------
 // SQLite Database Setup
 // -----------------------------------------------------------------------------
-const db = new DatabaseSync(path.join(DATA_DIR, 'database.sqlite'));
+const db = new Database(path.join(DATA_DIR, 'database.sqlite'));
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -155,7 +158,7 @@ if (adminCount === 0) {
   const adminId = crypto.randomUUID();
   const saltBuf = crypto.randomBytes(16);
   const hashBuf = crypto.scryptSync(ADMIN_PASSWORD, saltBuf, 64, {
-    n: 1024 * 1024,
+    N: 1024 * 1024,
     r: 1,
     p: 1,
   });

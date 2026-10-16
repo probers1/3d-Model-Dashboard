@@ -486,8 +486,8 @@ async function runTests() {
 
   console.log('\n[Test 15] Expired session cleanup sweep');
   {
-    const { DatabaseSync } = require('node:sqlite');
-    const testDb = new DatabaseSync(path.join(TEST_DATA_DIR, 'database.sqlite'));
+  const Database = require('better-sqlite3');
+  const testDb = new Database(path.join(TEST_DATA_DIR, 'database.sqlite'));
     const dummySessionId = 'expired-session-1234';
     testDb.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, (SELECT id FROM users LIMIT 1), ?)').run(
       dummySessionId,
