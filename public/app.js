@@ -19,6 +19,11 @@ const modelsGrid = document.getElementById('models-grid');
 const emptyState = document.getElementById('empty-state');
 const modelsCount = document.getElementById('models-count');
 const searchInput = document.getElementById('search-input');
+// Pagination state
+let allModels = [];
+let currentPage = 1;
+let itemsPerPage = 10;
+let paginationContainer = null;
 
 // Modals
 const uploadModal = document.getElementById('upload-modal');
@@ -298,17 +303,19 @@ async function loadModels(query = searchInput.value) {
     const res = await fetch(url);
     if (!res.ok) return;
 
-    const models = await res.json();
+    allModels = await res.json();
+    currentPage = 1; // reset to first page on new query
     const filterDesc = selectedTags.size > 0 ? ` (filtered by ${selectedTags.size} tag${selectedTags.size === 1 ? '' : 's'})` : '';
-    modelsCount.textContent = `${models.length} model${models.length === 1 ? '' : 's'}${filterDesc}`;
-
-    if (models.length === 0) {
+    modelsCount.textContent = `${allModels.length} model${allModels.length === 1 ? '' : 's'}${filterDesc}`;
+    if (allModels.length === 0) {
       modelsGrid.innerHTML = '';
       emptyState.style.display = 'block';
+      if (paginationContainer) paginationContainer.innerHTML = '';
       return;
     }
 
     emptyState.style.display = 'none';
+    renderPage();
     modelsGrid.innerHTML = models.map(m => createModelCardHTML(m)).join('');
 
     // Attach click listeners to cards
@@ -330,22 +337,121 @@ function createModelCardHTML(m) {
   const thumbUrl = `/api/models/${m.id}/thumbnail?t=${new Date(m.updated_at).getTime()}`;
 
   return `
-    <div class="model-card" data-id="${m.id}">
+     <div class="model-card" data-id="${m.id}">
       <div class="card-thumb">
         <img src="${thumbUrl}" alt="${m.title}" loading="lazy" onerror="this.onerror=null; this.src='/placeholder-thumb.svg';">
         <span class="card-badge-count">📦 ${m.file_count || 1}</span>
       </div>
-      <div class="card-body">
+       <div class="card-body">
         <h4 class="card-title" title="${m.title}">${m.title}</h4>
         <p class="card-desc">${m.description || 'No description provided.'}</p>
         <div class="card-tags">${tagsHTML}</div>
-        <div class="card-footer">
-          <span>By ${m.author || 'Unknown'}</span>
-          <span>${formatDate(m.created_at)}</span>
-        </div>
+          <div class="card-footer">
+            <span>By ${m.author || 'Unknown'}</span>
+            <span>${formatDate(m.created_at)}</span>
+            <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); manualThumbnail('${m.id}')" style="margin-left:8px;">🔧</button>
+          </div>
       </div>
     </div>
   `;
+}
+
+// Pagination rendering
+function renderPage() {
+  const start = (currentPage - 1) * itemsPerPage;
+  const pageItems = allModels.slice(start, start + itemsPerPage);
+  modelsGrid.innerHTML = pageItems.map(m => createModelCardHTML(m)).join('');
+  attachCardListeners();
+  renderPaginationControls();
+}
+
+function attachCardListeners() {
+  document.querySelectorAll('.model-card').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.tag-pill')) return;
+      const id = card.dataset.id;
+      openModelDetail(id);
+    });
+  });
+}
+
+function renderPaginationControls() {
+  if (!paginationContainer) {
+    paginationContainer = document.createElement('div');
+    paginationContainer.id = 'pagination-controls';
+    paginationContainer.style.textAlign = 'center';
+    paginationContainer.style.marginTop = '1rem';
+    paginationContainer.style.display = 'flex';
+    paginationContainer.style.justifyContent = 'center';
+    paginationContainer.style.gap = '0.5rem';
+    modelsGrid.parentNode.insertBefore(paginationContainer, modelsGrid.nextSibling);
+  }
+  const totalPages = Math.ceil(allModels.length / itemsPerPage);
+  paginationContainer.innerHTML = '';
+  const createBtn = (label, page, disabled = false) => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm btn-outline-secondary';
+    btn.textContent = label;
+    btn.disabled = disabled;
+    btn.onclick = () => {
+      currentPage = page;
+      renderPage();
+    };
+    return btn;
+  };
+  paginationContainer.appendChild(createBtn('«', currentPage - 1, currentPage === 1));
+  // Show up to 5 page numbers centered around current
+  const pageLinks = [];
+  for (let i = 1; i <= totalPages; i++) {
+    pageLinks.push(i);
+  }
+  const visiblePages = pageLinks.slice(Math.max(0, currentPage - 3), Math.min(totalPages, currentPage + 2));
+  visiblePages.forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm btn-outline-secondary' + (p === currentPage ? ' active' : '');
+    btn.textContent = p;
+    btn.onclick = () => { currentPage = p; renderPage(); };
+    paginationContainer.appendChild(btn);
+  });
+  paginationContainer.appendChild(createBtn('»', currentPage + 1, currentPage === totalPages));
+  // Items per page selector
+  const perPageSelect = document.createElement('select');
+  perPageSelect.className = 'form-select form-select-sm';
+  perPageSelect.style.width = '80px';
+  [10, 25, 50, 100].forEach(opt => {
+    const o = document.createElement('option');
+    o.value = opt;
+    o.textContent = opt;
+    perPageSelect.appendChild(o);
+  });
+  perPageSelect.value = itemsPerPage;
+  perPageSelect.onchange = () => {
+    itemsPerPage = parseInt(perPageSelect.value, 10);
+    currentPage = 1;
+    renderPage();
+  };
+  paginationContainer.appendChild(perPageSelect);
+}
+
+// Manual thumbnail regeneration helper
+async function manualThumbnail(modelId) {
+  try {
+    const res = await fetch(`/api/models/${modelId}/thumbnail`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      alert(`Thumbnail generation failed: ${err}`);
+      return;
+    }
+    // Refresh the model list to show new thumbnail after a short delay
+    setTimeout(() => loadModels(), 2000);
+  } catch (e) {
+    console.error('Error triggering manual thumbnail:', e);
+    alert('Error triggering thumbnail generation');
+  }
 }
 
 // -----------------------------------------------------------------------------
